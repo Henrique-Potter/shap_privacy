@@ -1,18 +1,18 @@
 import glob
-from pathlib import Path
 import shap
 import numpy as np
-import matplotlib.pyplot as plt
 import tensorflow as tf
+
+from tensorflow.keras.models import load_model
+
 from TrainingPlot import PlotLosses
 from data_processing import pre_process_data
-from emonet import build_emo_model, build_gender_model
+tf.random.set_seed(42)
 
 print("Num GPUs Available: ", len(tf.config.list_physical_devices('GPU')))
 
 
 def main():
-
     audio_files_path = "G:\\NNDatasets\\audio"
     audio_files = glob.glob("{}/**/*.wav".format(audio_files_path), recursive=True)
 
@@ -23,51 +23,70 @@ def main():
 
     print("Building Neural Net")
 
-    emo_model_path = './checkpoints/trained_model'
-    gender_model_path = './gmodel_checkpoints/trained_model'
+    emo_model_path = './emo_checkpoint/emodel.h5'
+    gender_model_path = './gmodel_checkpoint/gmodel.h5'
+    # emo_model = load_model(emo_model_path)
+    # # SetBatchNormalizationMomentum(emo_model)
+    # test_emo_perf = emo_model.evaluate(x_testcnn, y_emo_test)
+    # train_emo_perf = emo_model.evaluate(x_traincnn, y_emo_train)
+    # print("Emo Model Train perf is:{}, Test perf is:{}".format(train_emo_perf, test_emo_perf))
 
-    emo_model = tf.keras.models.load_model(emo_model_path)
-    gender_model = tf.keras.models.load_model(gender_model_path)
-
-    test_emo_acc = emo_model.evaluate(x_testcnn, y_emo_test, batch_size=128)
-    train_emo_acc = emo_model.evaluate(x_traincnn, y_emo_train, batch_size=128)
-
-    test_gen_acc = gender_model.evaluate(x_testcnn, y_gen_test, batch_size=128)
-    train_gen_acc = gender_model.evaluate(x_traincnn, y_gen_train, batch_size=128)
+    gender_model = load_model(gender_model_path)
+    test_gen_perf = gender_model.evaluate(x_testcnn, y_gen_test)
+    train_gen_perf = gender_model.evaluate(x_traincnn, y_gen_train)
+    print("Gen Model Train perf is:{}, Test perf is:{}".format(train_gen_perf, test_gen_perf))
 
     one_class_emo = []
     one_class_gen = []
-    # One class only
-    for mfcc_idx in range(x_traincnn.shape[0]):
-        if y_emo_train[mfcc_idx][5] == 1:
-            one_class_emo.append(x_traincnn[mfcc_idx])
-        if y_gen_train[mfcc_idx][0] == 0:
-            one_class_gen.append(x_traincnn[mfcc_idx])
 
-    one_class_np = np.array(one_class_emo[:10])
-    #background = x_testcnn[:100]
-    background = x_traincnn[:100]
-    test_images_classes = y_emo_train[:100]
+    # # One class only
+    # for mfcc_idx in range(x_traincnn.shape[0]):
+    #     if y_emo_train[mfcc_idx][5] == 1:
+    #         one_class_emo.append(x_traincnn[mfcc_idx])
+    #     if y_gen_train[mfcc_idx][0] == 0:
+    #         one_class_gen.append(x_traincnn[mfcc_idx])
+    #
+    # shap_input_np = np.array(one_class_emo[:10])
+    # # Model, Data to find Shap values, background, background size
+    # shap_values = extract_shap(emo_model, shap_input_np, x_traincnn, 100)
+    #
+    # plot_shap_values(shap_values, shap_input_np)
+    #
+    # shap_input_np = np.array(one_class_gen[:10])
+    # # Model, Data to find Shap values, background, background size
+    # shap_values = extract_shap(gender_model, shap_input_np, x_traincnn, 100)
+    #
+    # plot_shap_values(shap_values, shap_input_np)
 
-    e = shap.DeepExplainer(emo_model, background)
-    shap_values = e.shap_values(one_class_np)
+def SetBatchNormalizationMomentum(model, new_value=0.9, prefix='', verbose=False):
+  for ii, layer in enumerate(model.layers):
+    if hasattr(layer, 'layers'):
+      SetBatchNormalizationMomentum(layer, new_value, f'{prefix}Layer {ii}/', verbose)
+      continue
+    elif isinstance(layer, tf.keras.layers.BatchNormalization):
+      if verbose:
+        print(f'{prefix}Layer {ii}: name={layer.name} momentum={layer.momentum} --> set momentum={new_value}')
+      layer.momentum = new_value
 
-    new_list = []
+def plot_shap_values(shap_values, shap_input_np):
+    tilled_shap_list = []
     for shap_value in shap_values:
         temp = shap_value.reshape((shap_value.shape[0], 1, 259, 1))
         temp2 = np.tile(temp, (100, 1, 1))
-        new_list.append(temp2)
+        tilled_shap_list.append(temp2)
 
-    # (# samples x width x height x channels),
-    reshaped_input = one_class_np.reshape((one_class_np.shape[0], 1, 259, 1))
+    # Forcing array as a image by tilling the array (# samples x width x height x channels),
+    reshaped_input = shap_input_np.reshape((shap_input_np.shape[0], 1, 259, 1))
     tilling = np.tile(reshaped_input, (100, 1, 1))
-    shap.image_plot(new_list, tilling)
+    shap.image_plot(tilled_shap_list, tilling)
 
-    # shap_numpy = [np.swapaxes(np.swapaxes(s, 1, -1), 1, 2) for s in shap_values]
-    # test_numpy = np.swapaxes(np.swapaxes(one_class_np, 1, -1), 1, 2)
-    # shap.image_plot(shap_numpy, -test_numpy)
 
-    
+def extract_shap(emo_model, shap_input, x_traincnn, background_size):
+
+    background = x_traincnn[:background_size]
+    e = shap.DeepExplainer(emo_model, background)
+    shap_values = e.shap_values(shap_input)
+    return shap_values
 
 
 if __name__ == '__main__':

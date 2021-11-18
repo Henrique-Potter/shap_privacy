@@ -1,8 +1,11 @@
 import tensorflow as tf
 from matplotlib import pyplot as plt
 
-emo_model_path = './checkpoints/trained_model'
-gender_model_path = './gmodel_checkpoints/trained_model'
+emo_model_path = './emo_checkpoint/emodel.h5'
+gender_model_path = './gmodel_checkpoint/gmodel.h5'
+
+plot_per_epoch = 100
+save_per_epoch = 100
 
 
 class PlotLosses(tf.keras.callbacks.Callback):
@@ -39,7 +42,7 @@ class PlotLosses(tf.keras.callbacks.Callback):
 
 		self.i += 1
 
-		if epoch % 10 == 0 and epoch != 0:
+		if epoch % plot_per_epoch == 0 and epoch != 0:
 			figure, axis = plt.subplots(2)
 			if self.get_emotion_label:
 				plt.title("Voice Emotion CNN Model")
@@ -63,5 +66,5 @@ class PlotLosses(tf.keras.callbacks.Callback):
 			plt.subplots_adjust(hspace=0.7)
 			plt.show()
 
-		elif epoch % 400 == 0 and epoch != 0:
+		elif epoch % save_per_epoch == 0 and epoch != 0:
 			self.model.save(self.model_path)

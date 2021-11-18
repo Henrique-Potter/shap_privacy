@@ -14,13 +14,13 @@ def build_emo_model():
 
 	model.add(Dense(259), )
 	model.add(Activation('relu'))
-	model.add(Dropout(0.2))
+	# model.add(Dropout(0.2))
 	model.add(Conv1D(1024, 3, padding='same', ))
 	model.add(Activation('relu'))
 
 	model.add(Conv1D(128, 5, padding='same'))
 	model.add(Activation('relu'))
-	model.add(Dropout(0.2))
+	# model.add(Dropout(0.2))
 	model.add(MaxPooling1D(pool_size=8))
 
 	model.add(Conv1D(128, 5, padding='same', ))

@@ -23,7 +23,7 @@ def train_model(model, model_path, x_testcnn, x_traincnn, y_test, y_train, get_e
     axis[1].set_ylabel('accuracy')
     axis[1].set_xlabel('epoch')
     axis[1].legend(['train', 'test'], loc='upper left')
-    plt.subplots_adjust(wspace=0.2, hspace=0.35)
+    plt.subplots_adjust(hspace=0.7)
     plt.show()
 
 
