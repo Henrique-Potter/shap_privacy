@@ -36,7 +36,7 @@ def pre_process_data(audio_files, get_emotion_label):
     print(mel_features_df)
     print(labels_df)
     # This will mess up evaluation
-    X_train, X_test, y_train, y_test = train_test_split(mel_features_df, labels_df, test_size=0.2)
+    X_train, X_test, y_train, y_test = train_test_split(mel_features_df, labels_df, test_size=0.2, random_state=5)
 
     from keras.utils import np_utils
     from sklearn.preprocessing import LabelEncoder

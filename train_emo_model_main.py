@@ -41,11 +41,12 @@ def main():
         print("Check point found. Loading existent Emo Model.")
         # Restore the weights
         model = tf.keras.models.load_model(model_path)
+        train_model(model, model_path, x_testcnn, x_traincnn, y_test, y_train, get_emotion_label)
         test_acc = model.evaluate(x_testcnn, y_test, batch_size=128)
         train_acc = model.evaluate(x_traincnn, y_train, batch_size=128)
 
-    # cnnhistory = model.evaluate(x_testcnn, y_test, batch_size=128)
-    # result = model.predict(x_testcnn[0])
+    print("Voice Emotion inference model Training complete!")
+
 
 if __name__ == '__main__':
     main()

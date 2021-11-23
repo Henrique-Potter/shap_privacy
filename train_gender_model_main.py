@@ -33,8 +33,11 @@ def main():
         print("Check point found. Loading existent Gen Model.")
         # Restore the weights
         model = tf.keras.models.load_model(model_path)
+        train_model(model, model_path, x_testcnn, x_traincnn, y_test, y_train, get_emotion_label=False)
         test_acc = model.evaluate(x_testcnn, y_test, batch_size=128)
         train_acc = model.evaluate(x_traincnn, y_train, batch_size=128)
+
+    print("Voice Gender inference model Training complete!")
 
 
 if __name__ == '__main__':

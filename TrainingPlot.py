@@ -4,8 +4,8 @@ from matplotlib import pyplot as plt
 emo_model_path = './emo_checkpoint/emodel.h5'
 gender_model_path = './gmodel_checkpoint/gmodel.h5'
 
-plot_per_epoch = 100
-save_per_epoch = 100
+plot_per_epoch = 200
+save_per_epoch = 500
 
 
 class PlotLosses(tf.keras.callbacks.Callback):
