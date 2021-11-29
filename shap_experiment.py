@@ -104,14 +104,52 @@ def main():
 
     fig = plt.figure()
     m_shap_sum2 = np.copy(m_shap_sum)
-    m_shap_sum[m_shap_sum < 0] = 0
-    f_shap_sum[f_shap_sum < 0] = 0
+    # m_shap_sum[m_shap_sum < 0] = 0
+    # f_shap_sum[f_shap_sum < 0] = 0
     m_shap_sum2[~intersection_map] = 0
 
     plt.bar(x_list, m_shap_sum, color='b')
     plt.bar(x_list, f_shap_sum, color='r')
     plt.bar(x_list, m_shap_sum2, color='g')
     plt.show()
+
+    male_label_map = np.where(y_gen_train == 0)
+    x_gen_train = x_gen_train[male_label_map[1]]
+
+    acc_list = []
+    loss_list = []
+    noise_str_list = []
+    for noise_str in np.arange(0.1, 2, 0.1):
+
+        noise_str_list.append(noise_str)
+        male_only_x, male_only_y = add_noise(m_shap_sum, x_gen_train, y_gen_train, noise_str)
+        train_gen_perf = gender_model.evaluate(male_only_x, male_only_y)
+        acc_list.append(train_gen_perf[1])
+        loss_list.append(train_gen_perf[0])
+        print("Gen Model loss:{}, Acc:{}".format(train_gen_perf[0], train_gen_perf[1]))
+
+    plt.plot(noise_str_list, acc_list, color='g')
+    plt.plot(noise_str_list, loss_list, color='r')
+    plt.show()
+
+
+def add_noise(m_shap_sum, x_gen_train, y_gen_train, noise_str):
+    male_only_x = None
+    male_only_y = None
+    import random as rd
+    for sample_index in range(x_gen_train.shape[0]):
+        true_label_index = np.where(y_gen_train[sample_index] == 1)[0][0]
+
+        if true_label_index == 0:
+            for feature_index in range(259):
+                if m_shap_sum[feature_index] > 0:
+                    rd_noise = np.random.randn(1, 1)[0, 0] * noise_str
+                    current_value = x_gen_train[sample_index, feature_index, 0]
+                    x_gen_train[sample_index, feature_index, 0] = current_value + rd_noise
+        else:
+            male_only_x = np.delete(x_gen_train, sample_index, 0)
+            male_only_y = np.delete(y_gen_train, sample_index, 0)
+    return male_only_x, male_only_y
 
 
 def analyse_shap_values(m_shap_list, x_list):
