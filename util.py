@@ -27,6 +27,23 @@ def train_model(model, model_path, x_testcnn, x_traincnn, y_test, y_train, get_e
     plt.show()
 
 
+def reject_outliers(data, m=3):
+    return data[abs(data - np.mean(data)) < m * np.std(data)]
+
+
+def reject_outliers1(data, m=3.):
+
+    u = np.mean(data)
+    s = np.std(data)
+    f1 = u - m * s
+    f2 = u + m * s
+    dt_median = np.median(data)
+    data1 = np.where(data > f1, data, f1)
+    data2 = np.where(data1 < f2, data1, f2)
+
+    return data2
+
+
 def show_spectrogram(file):
     sr, x = scipy.io.wavfile.read(file)
     ## Parameters: 10ms step, 30ms window

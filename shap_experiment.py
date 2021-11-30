@@ -9,6 +9,9 @@ from tensorflow.keras.models import load_model
 import matplotlib.pyplot as plt
 from data_processing import pre_process_data
 from scipy.cluster.vq import vq, kmeans, whiten
+
+from util import reject_outliers1
+
 tf.random.set_seed(42)
 
 
@@ -18,7 +21,7 @@ print("Num GPUs Available: ", len(tf.config.list_physical_devices('GPU')))
 def main():
     gen_shap_df_path = './data/emo_label_df.npy'
 
-    audio_files_path = "G:\\NNDatasets\\audio"
+    audio_files_path = "./NNDatasets/audio"
     audio_files = glob.glob("{}/**/*.wav".format(audio_files_path), recursive=True)
 
     print("Pre-processing audio files!")
@@ -83,15 +86,15 @@ def main():
             m_shap_list.append(np.squeeze(shap_value, axis=1))
             x_gen_train_audio = x_gen_train[index]
             m_input_list.append(x_gen_train_audio)
+
+
         else:
             shap_value = gen_shap_values[true_label_index][index]
             f_shap_list.append(np.squeeze(shap_value, axis=1))
 
-    x_list = [x for x in range(259)]
-
     # ------------------------ Analyzing Shap values ------------------------
-    m_shap_np_scaled = analyse_shap_values(m_shap_list, x_list)
-    f_shap_np_scaled = analyse_shap_values(f_shap_list, x_list)
+    m_shap_np_scaled = analyse_shap_values(m_shap_list)
+    f_shap_np_scaled = analyse_shap_values(f_shap_list)
 
     m_shap_sum = np.sum(m_shap_np_scaled, axis=0)
     f_shap_sum = np.sum(f_shap_np_scaled, axis=0)
@@ -107,6 +110,7 @@ def main():
     # m_shap_sum[m_shap_sum < 0] = 0
     # f_shap_sum[f_shap_sum < 0] = 0
     m_shap_sum2[~intersection_map] = 0
+    x_list = [x for x in range(259)]
 
     plt.bar(x_list, m_shap_sum, color='b')
     plt.bar(x_list, f_shap_sum, color='r')
@@ -152,33 +156,38 @@ def add_noise(m_shap_sum, x_gen_train, y_gen_train, noise_str):
     return male_only_x, male_only_y
 
 
-def analyse_shap_values(m_shap_list, x_list):
+def analyse_shap_values(m_shap_list):
 
     shap_np = np.array(m_shap_list)
-    shap_np_scaled = NormalizeData_minus1_1(shap_np)
-    shap_np_scaled_whitened = whiten(shap_np_scaled)
+    #shap_np_whitened = whiten(shap_np)
+    shap_np = reject_outliers1(shap_np, 1)
+    shap_np_scaled = NormalizeData_0_1(shap_np)
+    shap_np_scaled = shap_np
 
-    codebook, distortion = kmeans(shap_np_scaled_whitened, 8)
-    plot_scatter_first_feature(codebook, shap_np_scaled_whitened)
-    plot_scatter_first_vs_all(codebook, shap_np, shap_np_scaled_whitened)
+    shap_nr_samples = shap_np.shape[0]
+    shap_nr_features = shap_np.shape[1]
+    x_list = [x for x in range(shap_nr_features)]
 
-    shap_sorted_indexes = np.argsort(shap_np_scaled[0, :])
-    sorted_shap = shap_np_scaled[:, shap_sorted_indexes]
-    codebook, distortion = kmeans(sorted_shap, 8)
+    wcodebook, wdistortion = kmeans(shap_np_scaled, 8)
 
-    plt.scatter(sorted_shap[:, 0], sorted_shap[:, 1], c='b')
-    plt.scatter(codebook[:, 0], codebook[:, 1], c='r')
+    shap_samples_sum = np.sum(shap_np_scaled, axis=0)
+
+    shap_sorted_indexes = np.argsort(shap_samples_sum)
+    shap_samples_sum_sorted = shap_samples_sum[shap_sorted_indexes]
+    shpa_sorted_scaled_avg = shap_samples_sum_sorted/shap_nr_samples
+    shap_np_scaled_sorted = shap_np_scaled[:, shap_sorted_indexes]
+
+    for index in range(shap_nr_samples):
+        plt.plot(x_list, shap_np_scaled_sorted[index, :], c='b', alpha=0.002)
+
+    plt.plot(x_list, shpa_sorted_scaled_avg, c='r')
+
+    #plt.yscale('log')
+    #plt.yticks((np.arange(-0.1, 0.1, step=0.001)))
+    plt.ylim((-0.03, 0.03))
     plt.show()
 
-    fig = plt.figure()
-    y_sum = np.sum(shap_np_scaled, axis=0)
-    plt.bar(x_list, y_sum)
-    plt.show()
-
-    fig = plt.figure()
-    y_sum = np.sum(whiten(shap_np_scaled_whitened), axis=0)
-    plt.bar(x_list, y_sum)
-    plt.show()
+    # fig = plt.figure()
 
     return shap_np_scaled
 
@@ -191,7 +200,7 @@ def plot_scatter_first_vs_all(codebook, m_shap_np, m_shap_np_scaled_whitened):
 
 
 def plot_scatter_first_feature(codebook, m_shap_np_scaled_whitened):
-    plt.scatter(m_shap_np_scaled_whitened[:, 0], m_shap_np_scaled_whitened[:, 1])
+    plt.plot(m_shap_np_scaled_whitened[:, 0], m_shap_np_scaled_whitened[:, 1])
     plt.scatter(codebook[:, 0], codebook[:, 1], c='r')
     plt.show()
 

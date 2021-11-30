@@ -15,7 +15,7 @@ tf.random.set_seed(42)
 
 def main():
 
-    audio_files_path = "G:\\NNDatasets\\audio"
+    audio_files_path = "./NNDatasets/audio"
     audio_files = glob.glob("{}/**/*.wav".format(audio_files_path), recursive=True)
 
     print("Pre-processing audio files!")
