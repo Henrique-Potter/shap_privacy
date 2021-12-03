@@ -43,12 +43,13 @@ class PlotLosses(tf.keras.callbacks.Callback):
 		self.i += 1
 
 		if epoch % plot_per_epoch == 0 and epoch != 0:
-			figure, axis = plt.subplots(2)
+
 			if self.get_emotion_label:
 				plt.title("Voice Emotion CNN Model")
 			else:
 				plt.title("Voice Gender CNN Model")
 
+			figure, axis = plt.subplots(2)
 			axis[0].plot(self.x, self.losses, label="Train loss")
 			axis[0].plot(self.x, self.val_losses, label="Validation loss")
 			axis[0].set_title('Loss')

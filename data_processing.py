@@ -1,3 +1,5 @@
+import glob
+
 import numpy as np
 import librosa
 from pathlib import Path
@@ -6,37 +8,40 @@ import pandas as pd
 import time
 
 from numpy.random import seed
+from tqdm import tqdm
+
 seed(42)# keras seed fixing import
 
 
-def pre_process_data(audio_files, get_emotion_label):
+def pre_process_data(audio_files_path, get_emotion_label):
 
-    audio_mel_df_path = 'mel_df.pkl'
+    audio_files = glob.glob("{}/**/*.wav".format(audio_files_path), recursive=True)
+
+    audio_mel_df_path = './data/audio_data_df.pkl'
+
+    if not Path(audio_mel_df_path).exists():
+        print("Loading files and extracting features.")
+
+        audiol_features_df = extract_mel_features(audio_files)
+        audiol_features_df.fillna(0, inplace=True)
+
+        # # # -1 and 1 scaling
+        # for column in audiol_features_df.columns:
+        #     audiol_features_df[column] = audiol_features_df[column] / audiol_features_df[column].abs().max()
+
+        audiol_features_df.to_pickle(audio_mel_df_path)
+    else:
+        print("Loading pre_extracted features from file.")
+        audiol_features_df = pd.read_pickle(audio_mel_df_path)
+
+    print(audiol_features_df)
 
     if get_emotion_label:
-        audio_label_df_path = 'emo_label_df.pkl'
+        X_train, X_test, y_train, y_test = train_test_split(audiol_features_df.iloc[:, :-2], audiol_features_df.iloc[:, -2:-1],
+                                                            test_size=0.2, random_state=5)
     else:
-        audio_label_df_path = 'gender_label_df.pkl'
-
-    if not Path(audio_mel_df_path).exists() or not Path(audio_label_df_path).exists():
-
-        mel_features_df, labels_df = extract_mel_features(audio_files, get_emotion_label)
-        mel_features_df.fillna(0, inplace=True)
-
-        # # -1 and 1 scaling
-        for column in mel_features_df.columns:
-            mel_features_df[column] = mel_features_df[column] / mel_features_df[column].abs().max()
-
-        mel_features_df.to_pickle(audio_mel_df_path)
-        labels_df.to_pickle(audio_label_df_path)
-    else:
-        mel_features_df = pd.read_pickle(audio_mel_df_path)
-        labels_df = pd.read_pickle(audio_label_df_path)
-
-    print(mel_features_df)
-    print(labels_df)
-    # This will mess up evaluation
-    X_train, X_test, y_train, y_test = train_test_split(mel_features_df, labels_df, test_size=0.2, random_state=5)
+        X_train, X_test, y_train, y_test = train_test_split(audiol_features_df.iloc[:, :-2], audiol_features_df.iloc[:, -1:],
+                                                            test_size=0.2, random_state=5)
 
     from keras.utils import np_utils
     from sklearn.preprocessing import LabelEncoder
@@ -55,22 +60,23 @@ def pre_process_data(audio_files, get_emotion_label):
     return x_testcnn, x_traincnn, y_test, y_train
 
 
-def extract_mel_features(audio_files, get_emotion_label):
+def extract_mel_features(audio_files):
     from pandas import Series
 
-    mel_feature_df = pd.DataFrame()
-    label_list = []
+    audio_features_df = pd.DataFrame()
+    audio_labels_df = pd.DataFrame()
     start_time = time.time()
 
-    for index, full_fname in enumerate(audio_files):
+    for index, full_fname in tqdm(enumerate(audio_files)):
         file_name = Path(full_fname).name
         if file_name[6:-16] != '01' and file_name[6:-16] != '08' \
                 and file_name[:2] != 'su' and file_name[:1] != 'n' and file_name[:1] != 'd' and file_name[6:-16] != '07':
 
-            if get_emotion_label:
-                label_list.append(parse_fname_to_emo_label(file_name))
-            else:
-                label_list.append(parse_fname_to_gender_label(file_name))
+            emo_label = parse_fname_to_emo_label(file_name)
+            gen_label = parse_fname_to_gender_label(file_name)
+
+            if emo_label is None:
+                t =232323
 
             audio_bin, sample_rate = librosa.load(full_fname, duration=3, sr=22050 * 2, offset=1.1)
             sample_rate = np.array(sample_rate)
@@ -84,13 +90,12 @@ def extract_mel_features(audio_files, get_emotion_label):
             # ax.set(title='MFCC')
             # plt.show()
 
-            # [float(i) for i in feature]
-            # feature1=feature[:135]
-            mel_feature_df = mel_feature_df.append(Series(mfccs_mean), ignore_index=True)
-            #mel_feature_df.loc[index] = [mfccs]
+            audio_labels_df = audio_labels_df.append(Series([emo_label, gen_label]), ignore_index=True)
+            audio_features_df = audio_features_df.append(Series(mfccs_mean), ignore_index=True)
 
     print("Time to extract Mel features:  %s seconds." % (time.time() - start_time))
-    return mel_feature_df, pd.DataFrame(label_list)
+    full_audio_data_df = pd.concat([audio_features_df, audio_labels_df], ignore_index=True, axis=1)
+    return full_audio_data_df
 
 
 def parse_fname_to_emo_label(file_name):

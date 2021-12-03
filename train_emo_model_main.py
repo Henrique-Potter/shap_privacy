@@ -1,4 +1,3 @@
-import glob
 from pathlib import Path
 import tensorflow as tf
 from data_processing import pre_process_data
@@ -16,10 +15,9 @@ tf.random.set_seed(42)
 def main():
 
     audio_files_path = "./NNDatasets/audio"
-    audio_files = glob.glob("{}/**/*.wav".format(audio_files_path), recursive=True)
 
     print("Pre-processing audio files!")
-    x_testcnn, x_traincnn, y_test, y_train = pre_process_data(audio_files, get_emotion_label)
+    x_testcnn, x_traincnn, y_test, y_train = pre_process_data(audio_files_path, get_emotion_label)
     print("Pre-processing audio files Complete!")
 
     print("Building Neural Net")
