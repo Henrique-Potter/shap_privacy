@@ -1,3 +1,4 @@
+import pandas as pd
 import shap
 import numpy as np
 import tensorflow as tf
@@ -8,6 +9,7 @@ from tqdm import tqdm
 from tensorflow.keras.models import load_model
 import matplotlib.pyplot as plt
 from data_processing import pre_process_data
+from obfuscation_functions import *
 from util import replace_outliers_by_std
 
 tf.random.set_seed(42)
@@ -28,89 +30,247 @@ def main():
     x_gen_test, x_gen_train, y_gen_test, y_gen_train = pre_process_data(audio_files_path, get_emotion_label=False)
     print("Pre-processing audio files Complete!")
 
-    print("Building Neural Net")
+    # Sanity check. These summations should be 0.
+    test_equal_sum = np.sum(x_emo_test != x_gen_test)
+    train_equal_sum = np.sum(x_emo_train != x_gen_train)
+
+    print("Loading trained Neural Nets")
     emo_model = load_model(emo_model_path)
-
-    test_emo_perf = emo_model.evaluate(x_emo_test, y_emo_test)
-    train_emo_perf = emo_model.evaluate(x_emo_train, y_emo_train)
-    print("Emo Model Train perf is:{}, Test perf is:{}".format(train_emo_perf, test_emo_perf))
-
     gender_model = load_model(gender_model_path)
-    test_gen_perf = gender_model.evaluate(x_gen_test, y_gen_test)
-    train_gen_perf = gender_model.evaluate(x_gen_train, y_gen_train)
-    print("Gen Model Train perf is:{}, Test perf is:{}".format(train_gen_perf, test_gen_perf))
 
+    # Extracting SHAP values
     if not Path(gen_shap_df_path).exists():
         print("Calculating Shap values")
         # Generating Shap Values
-        gen_shap_values, e = extract_shap(gender_model, x_gen_test, x_gen_test, 150)
+        gen_shap_values, e = extract_shap(gender_model, x_gen_test, x_gen_train, 150)
         np.save(gen_shap_df_path, gen_shap_values)
     else:
         gen_shap_values = np.load(gen_shap_df_path)
 
-    f_shap_list, m_shap_list = get_taget_shap(gen_shap_values, x_gen_test, y_gen_test)
+    # Isolating shap values by class.
+    f_shap_list, m_shap_list = get_target_shap(gen_shap_values, x_gen_test, y_gen_test)
 
     # ------------------------ Analyzing Shap values ------------------------
     shap_np_scaled_sorted, shap_sorted_scaled_avg, shap_sorted_indexes = analyse_shap_values(m_shap_list)
+    shap_np_scaled_sorted, shap_sorted_scaled_avg, shap_sorted_indexes = analyse_shap_values(f_shap_list)
 
-    sigma_range = 100
-    obfuscated_perf_loss = []
-    obfuscated_perf_acc = []
+    # Building obfuscation experiment data
+    sigma_list = [x for x in range(1, 500)]
+    model_list = [("emotion", emo_model, y_emo_test, False), ("gender", gender_model, y_gen_test, True)]
+    obs_f_list = [(norm_noise, sigma_list)]
 
-    for sigma in range(1, sigma_range):
-        obfuscated_x = add_specific_noise(gen_shap_values, x_gen_test, y_gen_test, sigma)
-        obfuscated_gen_perf = gender_model.evaluate(obfuscated_x, y_gen_test)
-        obfuscated_perf_loss.append(obfuscated_gen_perf[0])
-        obfuscated_perf_acc.append(obfuscated_gen_perf[1])
+    # Sanity model performance check
+    evaluate_model(model_list, x_emo_test)
 
-    title_loss = "Gender NN model Loss"
-    title_acc = "Gender NN model Accuracy"
-    x_list = [x for x in range(1, sigma_range)]
-    figure, axis = plt.subplots(2)
-    axis[0].plot(x_list, obfuscated_perf_loss, label="Train loss")
-    axis[0].set_title(title_loss)
-    axis[0].set_ylabel('loss')
-    axis[0].set_xlabel('Noise multiplier')
-    axis[0].legend()
+    # Evaluating obfuscation functions
+    perf_list = evaluate_obfuscation_function(gen_shap_values, model_list, obs_f_list, x_gen_test)
 
-    axis[1].plot(x_list, obfuscated_perf_acc, label="Train Accuracy")
-    axis[1].set_title(title_acc)
-    axis[1].set_ylabel('accuracy')
-    axis[1].set_xlabel('Noise multiplier')
-    axis[1].legend()
+    # Plotting results
+    plot_obs_f_performance(perf_list)
 
+    # Parsing by class data
+    parsed_perf_by_class = parse_per_class_perf_data(perf_list)
+    # Plotting by class data
+    plot_obs_f_performance_by_class(parsed_perf_by_class)
+
+
+def parse_per_class_perf_data(perf_data):
+    perf_data_by_class = []
+    for perf in perf_data:
+        if perf[2] == "by_class":
+            model_name = perf[0]
+            obf_f_name = perf[1]
+            nr_classes = len(perf[3][0])
+            nr_noise_levels = len(perf[3])
+            perf_list = perf[3]
+            for class_index in range(nr_classes):
+                class_perf_acc = []
+                class_perf_loss = []
+                for noise_str_index in range(nr_noise_levels):
+                    class_perf_acc.append(perf_list[noise_str_index][class_index][1][1])
+                    class_perf_loss.append(perf_list[noise_str_index][class_index][1][0])
+                perf_data_by_class.append((model_name, obf_f_name, 'acc', class_perf_acc, class_index))
+                perf_data_by_class.append((model_name, obf_f_name, 'loss', class_perf_loss, class_index))
+    return perf_data_by_class
+
+
+def evaluate_model(model_list, x_test):
+    for model_name, model, y_model_input, target in model_list:
+        test_perf = model.evaluate(x_test, y_model_input)
+        print("{} Model Test perf is:{}".format(model_name, test_perf))
+
+
+# Plots performance data for N number of models with N number of obfuscation functions
+def plot_obs_f_performance(perf_list):
+    title_loss = "NN models Loss"
+    title_acc = "NN models Accuracy"
+    nr_noise_levels = len(perf_list[0][3])
+    x_list = [x for x in range(0, nr_noise_levels)]
+    #figure, axis = plt.subplots(2, 2)
+
+    fig = plt.figure()
+    #fig.set_size_inches(18.5, 10.5)
+    fig.set_dpi(100)
+    gs = fig.add_gridspec(2)
+    ax1 = fig.add_subplot(gs[0])
+    ax2 = fig.add_subplot(gs[1])
+
+    header = []
+    row_data = []
+    for model_name, obs_f_name, perf_name, perf_data in perf_list:
+        if perf_name == "by_class":
+            continue
+
+        lbl = "{} mdl w/ {}".format(model_name, obs_f_name)
+        if perf_name == "loss":
+            ax1.plot(x_list, perf_data, label=lbl)
+        else:
+            ax2.plot(x_list, perf_data, label=lbl)
+            header.append(lbl)
+            first, half, last, one_quarter, three_quarters = get_data_samples(perf_data)
+            row_data.append([first, one_quarter, half, three_quarters, last])
+
+    ax1.set_title(title_loss)
+    ax1.set_ylabel('loss')
+    ax1.set_xlabel('Noise str level')
+    ax1.legend()
+    ax2.set_title(title_acc)
+    ax2.set_ylabel('accuracy')
+    ax2.set_xlabel('Noise str level')
+    ax2.legend()
     plt.subplots_adjust(hspace=0.7)
     plt.show()
 
+    fig, ax = plt.subplots()
+    fig.set_dpi(100)
+    # hide axes
+    fig.patch.set_visible(False)
+    ax.axis('off')
+    ax.axis('tight')
+    df = pd.DataFrame(np.array(row_data).transpose(), columns=header)
 
-def add_specific_noise(gen_shap_values, x_gen_test, y_gen_test, sigma):
-    # gen_shap_values_norm = normalizeData_0_1(gen_shap_values)
-    gen_shap_values[gen_shap_values < 0] = 0
+    tab2 = ax.table(cellText=df.values, colLabels=df.columns, loc='center', cellLoc='center')
+    tab2.auto_set_column_width(col=list(range(len(df.columns))))
+    fig.tight_layout()
+    plt.show()
 
-    mu = 0
-    print("Parsing Shap values. ")
-    for index in tqdm(range(x_gen_test.shape[0])):
-        ismale = y_gen_test[index][0]
 
-        # Male
-        if ismale:
-            shap_value = np.squeeze(gen_shap_values[0][index], axis=1)
-            random_noise = sigma * np.random.randn(x_gen_test.shape[1])
-            shap_scaled_noise = shap_value * random_noise
+# Plots performance data for N number of models with N number of obfuscation functions
+def plot_obs_f_performance_by_class(perf_list):
+    title_loss = "NN models Loss"
+    title_acc = "NN models Accuracy"
+    nr_noise_levels = len(perf_list[0][3])
+    x_list = [x for x in range(0, nr_noise_levels)]
+    # figure, axis = plt.subplots(2, 2)
 
-            x_gen_test[index, :, 0] = x_gen_test[index, :, 0] + shap_scaled_noise
+    fig = plt.figure()
+    fig.set_size_inches(18, 10)
+    fig.set_dpi(200)
+    gs = fig.add_gridspec(2)
+    ax1 = fig.add_subplot(gs[0])
+    ax2 = fig.add_subplot(gs[1])
 
+    header = []
+    row_data = []
+    for model_name, obs_f_name, perf_name, perf_data, class_nr in perf_list:
+        lbl = "{}, {}, class {}".format(model_name[0], obs_f_name[0], class_nr)
+        if perf_name == "loss":
+            ax1.plot(x_list, perf_data, label=lbl)
         else:
-            shap_value = np.squeeze(gen_shap_values[1][index], axis=1)
-            random_noise = sigma * np.random.randn(x_gen_test.shape[1])
-            shap_scaled_noise = shap_value * random_noise
+            ax2.plot(x_list, perf_data, label=lbl)
+            header.append(lbl)
+            first, half, last, one_quarter, three_quarters = get_data_samples(perf_data)
+            row_data.append([first, one_quarter, half, three_quarters, last])
 
-            x_gen_test[index, :, 0] = x_gen_test[index, :, 0] + shap_scaled_noise
+    ax1.set_title(title_loss)
+    ax1.set_ylabel('loss')
+    ax1.set_xlabel('Noise str level')
+    ax1.legend()
+    ax2.set_title(title_acc)
+    ax2.set_ylabel('accuracy')
+    ax2.set_xlabel('Noise str level')
+    ax2.legend()
+    plt.subplots_adjust(hspace=0.7)
+    plt.show()
 
-    return x_gen_test.copy()
+    fig, ax = plt.subplots()
+    fig.set_size_inches(18, 10)
+    fig.set_dpi(200)
+    # hide axes
+    fig.patch.set_visible(False)
+    ax.axis('off')
+    ax.axis('tight')
+    df = pd.DataFrame(np.array(row_data).transpose(), columns=header)
+
+    tab2 = ax.table(cellText=df.values, colLabels=df.columns, loc='center', cellLoc='center')
+    tab2.auto_set_column_width(col=list(range(len(df.columns))))
+    fig.tight_layout()
+    plt.show()
 
 
-def get_taget_shap(gen_shap_values, x_gen_test, y_gen_test):
+def get_data_samples(perf_data):
+    first = round(perf_data[0], 2)
+    perf_dt_sz = len(perf_data)
+    half = round(perf_data[int(perf_dt_sz / 2)], 2)
+    three_quarters = round(perf_data[int(3 * perf_dt_sz / 4)], 2)
+    one_quarter = round(perf_data[int(perf_dt_sz / 4)], 2)
+    last = round(perf_data[int(perf_dt_sz - 1)], 2)
+    return first, half, last, one_quarter, three_quarters
+
+
+def evaluate_obfuscation_function(shap_values, model_dict, obs_f_dic, x_model_input):
+    perf_dict = []
+
+    target_mdl = None
+    for mdl in model_dict:
+        if mdl[3]:
+            target_mdl = mdl
+
+    for model_name, model, y_model_input, target in model_dict:
+        for obs_f, obs_f_str_list in obs_f_dic:
+            # Return list of noise str parameters
+            obfuscated_model_perf_loss = []
+            obfuscated_model_perf_acc = []
+            obfuscated_model_by_cls_perf = []
+
+            for obs_str in tqdm(obs_f_str_list):
+                # Obfuscating only males
+                obfuscated_x = obfuscate_by_gender(shap_values, x_model_input, target_mdl[2], obs_str, obs_f)
+                obfuscated_perf = model.evaluate(obfuscated_x, y_model_input)
+                obfuscated_model_perf_loss.append(obfuscated_perf[0])
+                obfuscated_model_perf_acc.append(obfuscated_perf[1])
+
+                by_class_perf = evaluate_by_class(model, obfuscated_x, y_model_input)
+                obfuscated_model_by_cls_perf.append(by_class_perf)
+
+            perf_dict.append((model_name, obs_f.__name__, "loss", obfuscated_model_perf_loss))
+            perf_dict.append((model_name, obs_f.__name__, "acc", obfuscated_model_perf_acc))
+            perf_dict.append((model_name, obs_f.__name__, "by_class", obfuscated_model_by_cls_perf))
+
+        tf.keras.backend.clear_session()
+    return perf_dict
+
+
+def evaluate_by_class(model, obfuscated_x, y_model_input):
+
+    # Isolating male indexes
+    # ml_only_index = y_model_input[2][:, 0] == 1
+    nr_classes = y_model_input.shape[1]
+
+    by_class_perf = []
+
+    for cls_index in range(nr_classes):
+        single_class_map = y_model_input[:, cls_index] == 1
+
+        obfuscated_x_single_class = obfuscated_x[single_class_map]
+        y_model_input_single_class = y_model_input[single_class_map]
+        obfuscated_single_class_perf = model.evaluate(obfuscated_x_single_class, y_model_input_single_class)
+        by_class_perf.append((cls_index, obfuscated_single_class_perf))
+
+    return by_class_perf
+
+
+def get_target_shap(gen_shap_values, x_gen_test, y_gen_test):
 
     m_shap_list = []
     f_shap_list = []
