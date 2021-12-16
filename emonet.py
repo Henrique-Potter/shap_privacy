@@ -1,6 +1,7 @@
 import tensorflow as tf
 
 # from keras import Sequential
+from keras.layers import Conv2D, MaxPool2D
 from tensorflow.keras import optimizers
 from tensorflow.keras.models import Sequential
 from tensorflow.keras.layers import Dense
@@ -26,13 +27,6 @@ def build_emo_model():
 	model.add(Conv1D(128, 5, padding='same', ))
 	model.add(Activation('relu'))
 
-	# #
-	# model.add(Conv1D(128, 5, padding='same',))
-	# model.add(Activation('relu'))
-	# model.add(Conv1D(128, 5, padding='same',))
-	# model.add(Activation('relu'))
-	# model.add(Dropout(0.2))
-	# #
 	model.add(Conv1D(256, 1, padding='same', ))
 	model.add(Activation('relu'))
 
@@ -42,11 +36,60 @@ def build_emo_model():
 	model.add(Dense(10))
 	model.add(Activation('softmax'))
 	opt = optimizers.Adam(learning_rate=0.000005)
-	# opt = optimizers.Adam()
-	# opt = optimizers.RMSprop(learning_rate=0.00001, decay=1e-6)
 
 	model.compile(loss='categorical_crossentropy', optimizer=opt, metrics=['accuracy'])
-	# model.summary()
+
+	return model
+
+
+def build_fser_emo_model(input_sample):
+
+	input_shape = input_sample.shape
+
+	model = Sequential()
+
+	model.add(Conv2D(filters=8, kernel_size=(5, 5), strides=(1, 1),  input_shape=(input_shape[1], input_shape[2], input_shape[3])))
+	model.add(Activation('relu'))
+	model.add(MaxPool2D(pool_size=(2, 2)))
+	model.add(Dropout(0.2))
+
+	model.summary()
+
+	model.add(Conv2D(filters=16, kernel_size=(5, 5), strides=(1, 1)))
+	model.add(Activation('relu'))
+	model.add(MaxPool2D(pool_size=(2, 2)))
+	model.add(Dropout(0.2))
+
+	model.summary()
+
+	model.add(Conv2D(filters=100, kernel_size=(5, 5), strides=(1, 1)))
+	model.add(Activation('relu'))
+	model.add(MaxPool2D(pool_size=(2, 2)))
+	model.add(Dropout(0.2))
+
+	model.summary()
+
+	model.add(Conv2D(filters=200, kernel_size=(2, 2), strides=(1, 1)))
+	model.add(Activation('relu'))
+	model.add(MaxPool2D(pool_size=(2, 2)))
+	model.add(Dropout(0.2))
+
+	model.add(Flatten())
+	model.add(Dense(17424))
+	model.add(Dense(1024))
+	model.add(Dense(500))
+	model.add(Dense(7))
+
+	model.summary()
+
+	model.add(Activation('softmax'))
+	# opt = optimizers.Adam(learning_rate=0.0001)
+	# opt = optimizers.Adam()
+	opt = optimizers.RMSprop(learning_rate=0.00001, decay=1e-6)
+	# opt = optimizers.SGD(learning_rate=0.001)
+
+	model.compile(loss='categorical_crossentropy', optimizer=opt, metrics=['accuracy'])
+	model.summary()
 
 	return model
 

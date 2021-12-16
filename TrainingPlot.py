@@ -55,6 +55,7 @@ class PlotLosses(tf.keras.callbacks.Callback):
 			axis[0].set_title('Loss')
 			axis[0].set_ylabel('loss')
 			axis[0].set_xlabel('epoch')
+			axis[0].set_yscale('log')
 			axis[0].legend()
 
 			axis[1].plot(self.x, self.accs, label="Train Accuracy")

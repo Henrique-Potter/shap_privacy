@@ -6,8 +6,9 @@ import librosa
 from TrainingPlot import PlotLosses
 
 
-def train_model(model, model_path, x_testcnn, x_traincnn, y_test, y_train, get_emotion_label):
-    cnnhistory = model.fit(x_traincnn, y_train, batch_size=128, epochs=1200, validation_data=(x_testcnn, y_test), callbacks=PlotLosses(get_emotion_label))
+def train_model(model, model_path, x_traincnn, x_testcnn, y_train, y_test, get_emotion_label):
+
+    cnnhistory = model.fit(x_traincnn, y_train, batch_size=256, epochs=1200, validation_data=(x_testcnn, y_test), callbacks=PlotLosses(get_emotion_label))
     # Save the weights
     model.save(model_path)
     figure, axis = plt.subplots(2)
