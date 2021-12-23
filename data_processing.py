@@ -13,51 +13,78 @@ from tqdm import tqdm
 seed(42)# keras seed fixing import
 
 
-def pre_process_data(audio_files_path, get_emotion_label):
+def pre_process_data(audio_files_path, get_emotion_label=True):
 
     audio_files = glob.glob("{}/**/*.wav".format(audio_files_path), recursive=True)
 
+    lst = []
+    for full_fname in tqdm(audio_files):
+        lst.append(full_fname)
+
+    lst_np = np.array(lst)
+    uniques = np.unique(lst_np)
+
     audio_mel_df_path = './data/audio_data_df.pkl'
 
-    if not Path(audio_mel_df_path).exists():
-        print("Loading files and extracting features.")
+    audio_mfcc_x = './data/audio_data_x.npy'
+    audio_mfcc_y = './data/audio_data_y.npy'
 
-        audiol_features_df = extract_mel_features(audio_files)
-        audiol_features_df.fillna(0, inplace=True)
+    if not Path(audio_mfcc_x).exists():
+        print("Loading files and extracting features.")
+        audiol_features_df = extract_mel_features2(audio_files)
+
+        X, y = zip(*audiol_features_df)
+
+        X = np.asarray(X)
+        Y = np.asarray(y)
+
+        np.save(audio_mfcc_x, X)
+        np.save(audio_mfcc_y, Y)
 
         # # # -1 and 1 scaling
         # for column in audiol_features_df.columns:
         #     audiol_features_df[column] = audiol_features_df[column] / audiol_features_df[column].abs().max()
+        # audiol_features_df.to_pickle(audio_mel_df_path)
 
-        audiol_features_df.to_pickle(audio_mel_df_path)
     else:
         print("Loading pre_extracted features from file.")
-        audiol_features_df = pd.read_pickle(audio_mel_df_path)
+        # audiol_features_df = pd.read_pickle(audio_mel_df_path)
+        X = np.load(audio_mfcc_x)
+        Y = np.load(audio_mfcc_y)
 
-    print(audiol_features_df)
+    # X = np.asarray(X)
+    # y = np.asarray(y)
+    #
+    # X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.33, random_state=42)
+    #
+    # x_traincnn = np.expand_dims(X_train, axis=2)
+    # x_testcnn = np.expand_dims(X_test, axis=2)
+
+    # print(audiol_features_df)
 
     if get_emotion_label:
-        X_train, X_test, y_train, y_test = train_test_split(audiol_features_df.iloc[:, :-2], audiol_features_df.iloc[:, -2:-1],
-                                                            test_size=0.2, random_state=5)
+        X_train, X_test, y_train, y_test = train_test_split(X, Y, test_size=0.33, random_state=55)
     else:
         X_train, X_test, y_train, y_test = train_test_split(audiol_features_df.iloc[:, :-2], audiol_features_df.iloc[:, -1:],
                                                             test_size=0.2, random_state=5)
 
     from keras.utils import np_utils
     from sklearn.preprocessing import LabelEncoder
-    X_train = np.array(X_train)
-    y_train = np.array(y_train)
-    X_test = np.array(X_test)
-    y_test = np.array(y_test)
+
+    pX = np.sum(np.concatenate((X_train, X_test), axis=0) != X)
+    pY = np.sum(np.concatenate((y_train, y_test), axis=0) != Y)
 
     lb = LabelEncoder()
+    y_train_encoded = lb.fit_transform(y_train)
+    y_test_encoded = lb.fit_transform(y_test)
+
     y_train = np_utils.to_categorical(lb.fit_transform(y_train))
     y_test = np_utils.to_categorical(lb.fit_transform(y_test))
     print(y_test)
     x_traincnn = np.expand_dims(X_train, axis=2)
     x_testcnn = np.expand_dims(X_test, axis=2)
 
-    return x_testcnn, x_traincnn, y_test, y_train
+    return x_traincnn, y_train, x_testcnn, y_test
 
 
 def pre_process_fseer_data(audio_files_path, get_emotion_label):
@@ -85,27 +112,30 @@ def pre_process_fseer_data(audio_files_path, get_emotion_label):
 
     if get_emotion_label:
         X_train, X_test, y_train, y_test = train_test_split(audiol_features_df.iloc[:, :-2], audiol_features_df.iloc[:, -2:-1],
-                                                            test_size=0.2, random_state=6)
+                                                            test_size=0.2, random_state=6, shuffle=False)
     else:
         X_train, X_test, y_train, y_test = train_test_split(audiol_features_df.iloc[:, :-2], audiol_features_df.iloc[:, -1:],
-                                                            test_size=0.2, random_state=6)
+                                                            test_size=0.33, random_state=6)
 
     from keras.utils import np_utils
     from sklearn.preprocessing import LabelEncoder
 
     X_train = np.array(X_train)
-    y_train = np.array(y_train)
+    y_train = np.ravel(np.array(y_train))
     X_test = np.array(X_test)
-    y_test = np.array(y_test)
+    y_test = np.ravel(np.array(y_test))
 
     lb = LabelEncoder()
-    y_train = np_utils.to_categorical(lb.fit_transform(y_train))
-    y_test = np_utils.to_categorical(lb.fit_transform(y_test))
-    print(y_test)
+    # y_train_encoded = np_utils.to_categorical(lb.fit_transform(y_train))
+    # y_test_encoded = np_utils.to_categorical(lb.fit_transform(y_test))
+    y_train_encoded = lb.fit_transform(y_train)
+    y_test_encoded = lb.fit_transform(y_test)
+    print(y_train)
+    print(y_train_encoded)
     x_traincnn = np.expand_dims(X_train, axis=2)
     x_testcnn = np.expand_dims(X_test, axis=2)
 
-    return x_traincnn, x_testcnn, y_train, y_test
+    return x_traincnn, y_train_encoded, x_testcnn, y_test_encoded
 
 
 def extract_mel_features(audio_files):
@@ -115,30 +145,66 @@ def extract_mel_features(audio_files):
     audio_labels_df = pd.DataFrame()
     start_time = time.time()
 
-    for index, full_fname in tqdm(enumerate(audio_files)):
+    lst = []
+
+    for full_fname in tqdm(audio_files):
         file_name = Path(full_fname).name
-        if file_name[6:-16] != '01' and file_name[6:-16] != '08' \
-                and file_name[:2] != 'su' and file_name[:1] != 'n' and file_name[:1] != 'd' and file_name[6:-16] != '07':
 
-            emo_label = parse_fname_to_emo_label(file_name)
-            gen_label = parse_fname_to_gender_label(file_name)
+        emo_label = parse_fname_to_only_emo_label(file_name)
+        gen_label = parse_fname_to_gender_label(file_name)
 
-            if emo_label is None:
-                t =232323
+        if emo_label is None or emo_label == '':
+            continue
 
-            audio_bin, sample_rate = librosa.load(full_fname, duration=3, sr=22050 * 2, offset=1.1)
-            sample_rate = np.array(sample_rate)
-            mfccs = librosa.feature.mfcc(y=audio_bin, sr=sample_rate, n_mfcc=4, dct_type=3)
-            mfccs_mean = np.mean(mfccs, axis=0)
+        audio_bin, sample_rate = librosa.load(full_fname, res_type='kaiser_fast')
 
-            #plot_mfccs(full_fname)
+        sample_rate = np.array(sample_rate)
+        mfccs = librosa.feature.mfcc(y=audio_bin, sr=sample_rate, n_mfcc=40).T
+        mfccs_mean = np.mean(mfccs, axis=0)
 
-            audio_labels_df = audio_labels_df.append(Series([emo_label, gen_label]), ignore_index=True)
-            audio_features_df = audio_features_df.append(Series(mfccs_mean), ignore_index=True)
+        #plot_mfccs(full_fname)
+
+        # audio_labels_df = audio_labels_df.append(Series([emo_label, gen_label]), ignore_index=True)
+        # audio_features_df = audio_features_df.append(Series(mfccs_mean), ignore_index=True)
 
     print("Time to extract Mel features:  %s seconds." % (time.time() - start_time))
     full_audio_data_df = pd.concat([audio_features_df, audio_labels_df], ignore_index=True, axis=1)
     return full_audio_data_df
+
+
+def extract_mel_features2(audio_files):
+    from pandas import Series
+
+    audio_features_df = pd.DataFrame()
+    audio_labels_df = pd.DataFrame()
+    start_time = time.time()
+
+    lst = []
+
+    for full_fname in tqdm(audio_files):
+        file_name = Path(full_fname).name
+
+        emo_label = parse_fname_to_only_emo_label(file_name)
+        gen_label = parse_fname_to_gender_label(file_name)
+
+        if emo_label is None or emo_label == '':
+            continue
+
+        audio_bin, sample_rate = librosa.load(full_fname, res_type='kaiser_fast')
+
+        sample_rate = np.array(sample_rate)
+        mfccs = librosa.feature.mfcc(y=audio_bin, sr=sample_rate, n_mfcc=128).T
+        mfccs_mean = np.mean(mfccs, axis=0)
+
+        # file_name = file_name[6:8]
+        # arr = mfccs_mean, file_name
+
+        arr = mfccs_mean, emo_label
+
+        lst.append(arr)
+
+    print("Time to extract Mel features:  %s seconds." % (time.time() - start_time))
+    return lst
 
 
 def plot_mfccs(full_fname):
@@ -180,8 +246,8 @@ def extract_2d_mel_features(audio_files):
     audio_features_df = pd.DataFrame()
     audio_labels_df = pd.DataFrame()
     start_time = time.time()
-
-    for index, full_fname in tqdm(enumerate(audio_files)):
+    mfcc_size = 0
+    for full_fname in tqdm(audio_files):
         file_name = Path(full_fname).name
         # if file_name[6:-16] != '01' and file_name[6:-16] != '08' \
         #         and file_name[:2] != 'su' and file_name[:1] != 'n' and file_name[:1] != 'd' and file_name[6:-16] != '07':
@@ -192,16 +258,24 @@ def extract_2d_mel_features(audio_files):
         if emo_label is None or emo_label == '':
             continue
 
-        if len(file_name) > 13:
-            audio_bin, sample_rate = librosa.load(full_fname, duration=3, sr=22050 * 2, offset=1.1)
+        if len(file_name) >= 13:
+            audio_bin, sample_rate = librosa.load(full_fname, duration=3, sr=22050 * 2, res_type='kaiser_fast', offset=1.1)
         else:
-            audio_bin, sample_rate = librosa.load(full_fname, duration=3, sr=22050 * 2, offset=0.1)
+            audio_bin, sample_rate = librosa.load(full_fname, duration=3, sr=22050 * 2, res_type='kaiser_fast')
 
         sample_rate = np.array(sample_rate)
-        mfccs = librosa.feature.mfcc(y=audio_bin, sr=sample_rate, n_mfcc=64, dct_type=1)
+
+        mfccs = librosa.feature.melspectrogram(y=audio_bin, sr=sample_rate, n_mels=64, n_fft=512, hop_length=512,
+                                               win_length=512)
+
+        #mfccs = librosa.feature.mfcc(y=audio_bin, sr=sample_rate, n_mfcc=64, dct_type=1)
         #mfccs_mean = np.mean(mfccs, axis=0)
 
-        mfccs = librosa.power_to_db(mfccs)
+        if mfccs.shape[1] > mfcc_size:
+            mfcc_size = mfccs.shape[1]
+            print(mfcc_size)
+
+        #mfccs = librosa.power_to_db(mfccs, ref=100)
         mfccs = mfccs.flatten()
         audio_labels_df = audio_labels_df.append(Series([emo_label, gen_label]), ignore_index=True)
         audio_features_df = audio_features_df.append(Series(mfccs), ignore_index=True)
@@ -265,39 +339,24 @@ def parse_fname_to_emo_label(file_name):
 def parse_fname_to_only_emo_label(file_name):
 
     label = None
-    # RAVDESS file names
-    if file_name[6:-16] == '01' and int(file_name[18:-4]) % 2 == 1:
-        label = 'neutral'
-    elif file_name[6:-16] == '01' and int(file_name[18:-4]) % 2 == 0:
-        label = 'neutral'
-    # elif file_name[6:-16] == '02' and int(file_name[18:-4]) % 2 == 0:
-    #     label = 'calm'
-    # elif file_name[6:-16] == '02' and int(file_name[18:-4]) % 2 == 1:
-    #     label = 'calm'
-    elif file_name[6:-16] == '03' and int(file_name[18:-4]) % 2 == 0:
-        label = 'happy'
-    elif file_name[6:-16] == '03' and int(file_name[18:-4]) % 2 == 1:
-        label = 'happy'
-    elif file_name[6:-16] == '04' and int(file_name[18:-4]) % 2 == 0:
-        label = 'sad'
-    elif file_name[6:-16] == '04' and int(file_name[18:-4]) % 2 == 1:
-        label = 'sad'
-    elif file_name[6:-16] == '05' and int(file_name[18:-4]) % 2 == 0:
-        label = 'angry'
-    elif file_name[6:-16] == '05' and int(file_name[18:-4]) % 2 == 1:
-        label = 'angry'
-    elif file_name[6:-16] == '06' and int(file_name[18:-4]) % 2 == 0:
-        label = 'fearful'
-    elif file_name[6:-16] == '06' and int(file_name[18:-4]) % 2 == 1:
-        label = 'fearful'
-    elif file_name[6:-16] == '07' and int(file_name[18:-4]) % 2 == 0:
-        label = 'disgust'
-    elif file_name[6:-16] == '07' and int(file_name[18:-4]) % 2 == 1:
-        label = 'disgust'
-    elif file_name[6:-16] == '08' and int(file_name[18:-4]) % 2 == 0:
-        label = 'surprised'
-    elif file_name[6:-16] == '08' and int(file_name[18:-4]) % 2 == 1:
-        label = 'surprised'
+    if len(file_name) >= 20:
+        # RAVDESS file names
+        if file_name[7:8] == '1':
+            label = 'neutral'
+        # elif file_name[7:8] == '2':
+        #     label = 'calm'
+        elif file_name[7:8] == '3':
+            label = 'happy'
+        elif file_name[7:8] == '4':
+            label = 'sad'
+        elif file_name[7:8] == '5':
+            label = 'angry'
+        elif file_name[7:8] == '6':
+            label = 'fearful'
+        elif file_name[7:8] == '7':
+            label = 'disgust'
+        elif file_name[7:8] == '8':
+            label = 'surprised'
 
     #EMOVO file names
     elif file_name[:3] == 'dis':

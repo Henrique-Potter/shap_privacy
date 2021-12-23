@@ -5,10 +5,12 @@ import librosa
 
 from TrainingPlot import PlotLosses
 
+from util.PerClassMetrics import PerClassMetrics
 
-def train_model(model, model_path, x_traincnn, x_testcnn, y_train, y_test, get_emotion_label):
 
-    cnnhistory = model.fit(x_traincnn, y_train, batch_size=256, epochs=1200, validation_data=(x_testcnn, y_test), callbacks=PlotLosses(get_emotion_label))
+def train_model(model, model_path, x_traincnn, y_train, x_testcnn, y_test, get_emotion_label):
+    cl_backs = [PlotLosses(get_emotion_label), PerClassMetrics(model, (x_testcnn, y_test), 16)]
+    cnnhistory = model.fit(x_traincnn, y_train, batch_size=16, epochs=1200, validation_data=(x_testcnn, y_test), callbacks=cl_backs)
     # Save the weights
     model.save(model_path)
     figure, axis = plt.subplots(2)

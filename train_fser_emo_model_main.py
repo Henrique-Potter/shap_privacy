@@ -14,10 +14,10 @@ tf.random.set_seed(42)
 
 def main():
 
-    audio_files_path = "./NNDatasets/audio"
+    audio_files_path = "./NNDatasets/audio/ravdess"
 
     print("Pre-processing audio files!")
-    x_traincnn, x_testcnn, y_train, y_test = pre_process_fseer_data(audio_files_path, get_emotion_label)
+    x_traincnn, y_train, x_testcnn, y_test = pre_process_fseer_data(audio_files_path, get_emotion_label)
     print("Pre-processing audio files Complete!")
     import numpy as np
     print("Building Neural Net")
@@ -29,7 +29,7 @@ def main():
 
     print("Starting model training!")
     if not Path(model_path).exists():
-        train_model(model, model_path, x_traincnn, x_testcnn, y_train, y_test, get_emotion_label)
+        train_model(model, model_path, x_traincnn, y_train, x_testcnn, y_test, get_emotion_label)
         test_acc = model.evaluate(x_testcnn, y_test, batch_size=128)
         train_acc = model.evaluate(x_traincnn, y_train, batch_size=128)
         print("Emo Model Train perf is:{}, Test perf is:{}".format(train_acc, test_acc))
