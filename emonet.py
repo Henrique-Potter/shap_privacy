@@ -115,14 +115,14 @@ def build_fser_emo_model(input_sample):
 	model.summary()
 
 	model.add(Activation('softmax'))
-	# opt = optimizers.Adam(learning_rate=0.00001)
+	opt = optimizers.Adam(learning_rate=0.00001)
 	# opt = optimizers.Adam()
 	# opt = optimizers.RMSprop(learning_rate=0.00001, decay=1e-6)
 	# opt = optimizers.RMSprop(learning_rate=0.00005, rho=0.9, epsilon=None, decay=0.0)
 
-	opt = optimizers.SGD(learning_rate=0.001)
+	#opt = optimizers.SGD(learning_rate=0.001)
 
-	model.compile(loss='sparse_categorical_crossentropy', optimizer=opt, metrics=['accuracy'])
+	model.compile(loss='categorical_crossentropy', optimizer=opt, metrics=['accuracy'])
 	model.summary()
 
 	return model

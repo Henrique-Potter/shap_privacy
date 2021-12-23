@@ -6,6 +6,7 @@ from pathlib import Path
 from sklearn.model_selection import train_test_split
 import pandas as pd
 import time
+import cv2
 
 from numpy.random import seed
 from tqdm import tqdm
@@ -99,10 +100,6 @@ def pre_process_fseer_data(audio_files_path, get_emotion_label):
         audiol_features_df = extract_2d_mel_features(audio_files)
         audiol_features_df.fillna(0, inplace=True)
 
-        # # # -1 and 1 scaling
-        # for column in audiol_features_df.columns:
-        #     audiol_features_df[column] = audiol_features_df[column] / audiol_features_df[column].abs().max()
-
         audiol_features_df.to_pickle(audio_mel_df_path)
     else:
         print("Loading pre_extracted features from file.")
@@ -110,11 +107,17 @@ def pre_process_fseer_data(audio_files_path, get_emotion_label):
 
     print(audiol_features_df)
 
+    # # # -1 and 1 scaling
+    # for column in tqdm(audiol_features_df.iloc[:, :-2].columns):
+    #     audiol_features_df[column] = audiol_features_df[column] / audiol_features_df[column].abs().max()
+
     if get_emotion_label:
-        X_train, X_test, y_train, y_test = train_test_split(audiol_features_df.iloc[:, :-2], audiol_features_df.iloc[:, -2:-1],
-                                                            test_size=0.2, random_state=6, shuffle=False)
+        X_train, X_test, y_train, y_test = train_test_split(audiol_features_df.iloc[:, :-2],
+                                                            audiol_features_df.iloc[:, -2:-1],
+                                                            test_size=0.2, random_state=6)
     else:
-        X_train, X_test, y_train, y_test = train_test_split(audiol_features_df.iloc[:, :-2], audiol_features_df.iloc[:, -1:],
+        X_train, X_test, y_train, y_test = train_test_split(audiol_features_df.iloc[:, :-2],
+                                                            audiol_features_df.iloc[:, -1:],
                                                             test_size=0.33, random_state=6)
 
     from keras.utils import np_utils
@@ -126,10 +129,10 @@ def pre_process_fseer_data(audio_files_path, get_emotion_label):
     y_test = np.ravel(np.array(y_test))
 
     lb = LabelEncoder()
-    # y_train_encoded = np_utils.to_categorical(lb.fit_transform(y_train))
-    # y_test_encoded = np_utils.to_categorical(lb.fit_transform(y_test))
-    y_train_encoded = lb.fit_transform(y_train)
-    y_test_encoded = lb.fit_transform(y_test)
+    y_train_encoded = np_utils.to_categorical(lb.fit_transform(y_train))
+    y_test_encoded = np_utils.to_categorical(lb.fit_transform(y_test))
+    # y_train_encoded = lb.fit_transform(y_train)
+    # y_test_encoded = lb.fit_transform(y_test)
     print(y_train)
     print(y_train_encoded)
     x_traincnn = np.expand_dims(X_train, axis=2)
@@ -265,8 +268,11 @@ def extract_2d_mel_features(audio_files):
 
         sample_rate = np.array(sample_rate)
 
-        mfccs = librosa.feature.melspectrogram(y=audio_bin, sr=sample_rate, n_mels=64, n_fft=512, hop_length=512,
+        mfccs = librosa.feature.melspectrogram(y=audio_bin, sr=sample_rate, n_mels=128, n_fft=512, hop_length=512,
                                                win_length=512)
+
+
+        mfccs = cv2.resize(mfccs, dsize=(64, 64), interpolation=cv2.INTER_CUBIC)
 
         #mfccs = librosa.feature.mfcc(y=audio_bin, sr=sample_rate, n_mfcc=64, dct_type=1)
         #mfccs_mean = np.mean(mfccs, axis=0)
