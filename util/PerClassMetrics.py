@@ -17,9 +17,13 @@ class PerClassMetrics(keras.callbacks.Callback):
     def on_epoch_end(self, epoch, logs):
         import matplotlib.pyplot as plt
 
+        nr_classes = self.validation_data[1].shape[1]
+
         x_test, y_test = self.validation_data[0], self.validation_data[1]
         y_predict = np.asarray(self.model.predict(x_test))
 
+        true = np.argmax(y_test, axis=1)
+        pred = np.argmax(y_predict, axis=1)
         true = np.argmax(y_test, axis=1)
         pred = np.argmax(y_predict, axis=1)
 
@@ -36,9 +40,10 @@ class PerClassMetrics(keras.callbacks.Callback):
             self.plot_confusion_matrix(self.cm_raw)
 
         accs = self.cm.diagonal()
-        print("\n"+" " * 40 + "C0: {} C1: {} C2: {} C3: {} C4: {} C5: {} C6: {}".format(accs[0], accs[1], accs[2],
-                                                                                        accs[3], accs[4], accs[5],
-                                                                                        accs[6]))
+
+        print("\n")
+        for cl in range(nr_classes):
+            print(" " * 40 + "C{}: {}".format(cl, accs[cl]))
 
         return
 

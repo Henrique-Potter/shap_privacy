@@ -8,10 +8,12 @@ from TrainingPlot import PlotLosses
 
 from util.PerClassMetrics import PerClassMetrics
 
+
 def scale_minmax(X, min=0.0, max=1.0):
     X_std = (X - X.min()) / (X.max() - X.min())
     X_scaled = X_std * (max - min) + min
     return X_scaled
+
 
 def spectrogram_image(y, sr, out, hop_length, n_mels):
     # use log-melspectrogram
@@ -27,8 +29,9 @@ def spectrogram_image(y, sr, out, hop_length, n_mels):
     # save as PNG
     skimage.io.imsave(out, img)
 
-def train_model(model, model_path, batch,x_traincnn, y_train, x_testcnn, y_test, get_emotion_label):
-    cl_backs = [PlotLosses(get_emotion_label), PerClassMetrics(model, (x_testcnn, y_test), 64)]
+
+def train_model(model, model_path, batch, x_traincnn, y_train, x_testcnn, y_test, get_emotion_label):
+    cl_backs = [PlotLosses(model_path, get_emotion_label), PerClassMetrics(model, (x_testcnn, y_test), 64)]
     cnnhistory = model.fit(x_traincnn, y_train, batch_size=batch, epochs=1200, validation_data=(x_testcnn, y_test), callbacks=cl_backs)
     # Save the weights
     model.save(model_path)
@@ -88,8 +91,9 @@ def show_spectrogram(file):
     plt.show()
 
 
-def show_amplitude(file):
-    data, sampling_rate = librosa.load(file)
+def show_amplitude(data, sampling_rate):
+    import librosa.display
     plt.figure(figsize=(15, 5))
     librosa.display.waveplot(data, sr=sampling_rate)
     plt.show()
+

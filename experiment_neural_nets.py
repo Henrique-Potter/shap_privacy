@@ -58,7 +58,6 @@ def build_emo_model2(input_sample):
 	input_shape_channels = input_sample.shape[2]
 
 	model = Sequential()
-	model.add(Dense(1024))
 	model.add(Conv1D(128, 5, padding='same', input_shape=(input_shape_width, input_shape_channels)))
 	model.add(Activation('relu'))
 	model.add(Dropout(0.1))
@@ -66,16 +65,57 @@ def build_emo_model2(input_sample):
 	model.add(Conv1D(128, 5, padding='same', ))
 	model.add(Activation('relu'))
 	model.add(Dropout(0.1))
-	model.add(Dense(1024))
 	model.add(Flatten())
 	model.add(Dense(7))
 	model.add(Activation('softmax'))
 	opt = optimizers.RMSprop(learning_rate=0.00005, rho=0.9, epsilon=None, decay=0.0)
 	# opt = optimizers.Adam(learning_rate=0.00005)
 	model.compile(loss='categorical_crossentropy', optimizer=opt, metrics=['accuracy'])
+	model.summary()
 
 	return model
 
+
+def build_gender_model2(input_sample):
+
+	input_shape_width = input_sample.shape[1]
+	input_shape_channels = input_sample.shape[2]
+
+	model = Sequential()
+	model.add(Conv1D(128, 5, padding='same', input_shape=(input_shape_width, input_shape_channels)))
+	model.add(Activation('relu'))
+	model.add(Dropout(0.1))
+	model.add(MaxPooling1D(pool_size=8))
+	model.add(Conv1D(128, 5, padding='same', ))
+	model.add(Activation('relu'))
+	model.add(Dropout(0.1))
+	model.add(Flatten())
+	model.add(Dense(2))
+	model.add(Activation('softmax'))
+	opt = optimizers.RMSprop(learning_rate=0.00005, rho=0.9, epsilon=None, decay=0.0)
+	# opt = optimizers.Adam(learning_rate=0.00005)
+	model.compile(loss='categorical_crossentropy', optimizer=opt, metrics=['accuracy'])
+	model.summary()
+
+	return model
+
+
+def build_emo_model3(input_sample):
+
+	input_shape_width = input_sample.shape[1]
+	input_shape_channels = input_sample.shape[2]
+
+	model = Sequential()
+	model.add(Conv1D(64, 5, padding='same', input_shape=(input_shape_width, input_shape_channels)))
+	model.add(Activation('relu'))
+	model.add(Dropout(0.2))
+	model.add(Flatten())
+	model.add(Dense(8))
+	model.add(Activation('softmax'))
+	opt = optimizers.RMSprop()
+	model.compile(loss='sparse_categorical_crossentropy', optimizer='rmsprop', metrics=['accuracy'])
+
+	return model
 
 def build_fser_emo_model(input_sample):
 

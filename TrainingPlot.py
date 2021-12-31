@@ -1,22 +1,16 @@
 import tensorflow as tf
 from matplotlib import pyplot as plt
 
-emo_model_path = './emo_checkpoint/emodel.h5'
-gender_model_path = './gmodel_checkpoint/gmodel.h5'
-
 plot_per_epoch = 200
-save_per_epoch = 500
+save_per_epoch = 200
 
 
 class PlotLosses(tf.keras.callbacks.Callback):
 
-	def __init__(self, get_emotion_label):
+	def __init__(self, model_path, get_emotion_label):
 		self.get_emotion_label = get_emotion_label
+		self.model_path = model_path
 
-		if get_emotion_label:
-			self.model_path = emo_model_path
-		else:
-			self.model_path = gender_model_path
 
 	def on_train_begin(self, logs={}):
 		self.i = 0
@@ -68,5 +62,5 @@ class PlotLosses(tf.keras.callbacks.Callback):
 			plt.subplots_adjust(hspace=0.7)
 			plt.show()
 
-		elif epoch % save_per_epoch == 0 and epoch != 0:
+		if epoch % save_per_epoch == 0 and epoch != 0:
 			self.model.save(self.model_path)

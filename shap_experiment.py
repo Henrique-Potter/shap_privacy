@@ -10,19 +10,15 @@ from tensorflow.keras.models import load_model
 import matplotlib.pyplot as plt
 from data_processing import pre_process_data
 from obfuscation_functions import *
-from util import replace_outliers_by_std
-
-tf.random.set_seed(42)
 
 print("Num GPUs Available: ", len(tf.config.list_physical_devices('GPU')))
 
 
 def main():
-    emo_model_path = './emo_checkpoint/emodel.h5'
-    gender_model_path = './gmodel_checkpoint/gmodel.h5'
+    emo_model_path = 'emo_checkpoint/emodel_m2_all_aug_5k_16.h5'
+    gender_model_path = './gmodel_checkpoint/gmodel_m2_all_aug_5k_16_.h5'
 
     audio_files_path = "./NNDatasets/audio"
-
     gen_shap_df_path = './data/emo_shap_df.npy'
 
     print("Pre-processing audio files!")
@@ -48,7 +44,7 @@ def main():
         gen_shap_values = np.load(gen_shap_df_path)
 
     # Isolating shap values by class.
-    f_shap_list, m_shap_list = get_target_shap(gen_shap_values, x_gen_test, y_gen_test)
+    m_shap_list, f_shap_list = get_target_shap(gen_shap_values, x_gen_test, y_gen_test)
 
     # ------------------------ Analyzing Shap values ------------------------
     shap_np_scaled_sorted, shap_sorted_scaled_avg, shap_sorted_indexes = analyse_shap_values(m_shap_list)
@@ -285,7 +281,7 @@ def get_target_shap(gen_shap_values, x_gen_test, y_gen_test):
         else:
             shap_value = gen_shap_values[1][index]
             f_shap_list.append(np.squeeze(shap_value, axis=1))
-    return f_shap_list, m_shap_list
+    return m_shap_list, f_shap_list
 
 
 def add_noise(m_shap_sum, x_gen_train, y_gen_train, noise_str):
