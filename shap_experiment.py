@@ -10,25 +10,26 @@ from tensorflow.keras.models import load_model
 import matplotlib.pyplot as plt
 from data_processing import pre_process_data
 from obfuscation_functions import *
+from util.custom_functions import replace_outliers_by_std
 
 print("Num GPUs Available: ", len(tf.config.list_physical_devices('GPU')))
 
 
 def main():
     emo_model_path = 'emo_checkpoint/emodel_m2_all_aug_5k_16.h5'
-    gender_model_path = './gmodel_checkpoint/gmodel_m2_all_aug_5k_16_.h5'
+    gender_model_path = './gmodel_checkpoint/gmodel_m2_all_aug_5k_16.h5'
 
     audio_files_path = "./NNDatasets/audio"
     gen_shap_df_path = './data/emo_shap_df.npy'
 
     print("Pre-processing audio files!")
-    x_emo_test, x_emo_train, y_emo_test, y_emo_train = pre_process_data(audio_files_path, get_emotion_label=True)
-    x_gen_test, x_gen_train, y_gen_test, y_gen_train = pre_process_data(audio_files_path, get_emotion_label=False)
+    x_train_emo_cnn, y_train_emo_encoded, x_test_emo_cnn, y_test_emo_encoded = pre_process_data(audio_files_path, get_emotion_label=True)
+    x_train_gen_cnn, y_train_gen_encoded, x_test_gen_cnn, y_test_gen_encoded = pre_process_data(audio_files_path, get_emotion_label=False)
     print("Pre-processing audio files Complete!")
 
     # Sanity check. These summations should be 0.
-    test_equal_sum = np.sum(x_emo_test != x_gen_test)
-    train_equal_sum = np.sum(x_emo_train != x_gen_train)
+    train_equal_sum = np.sum(x_train_emo_cnn != x_train_gen_cnn)
+    test_equal_sum = np.sum(x_test_emo_cnn != x_test_gen_cnn)
 
     print("Loading trained Neural Nets")
     emo_model = load_model(emo_model_path)
@@ -38,13 +39,13 @@ def main():
     if not Path(gen_shap_df_path).exists():
         print("Calculating Shap values")
         # Generating Shap Values
-        gen_shap_values, e = extract_shap(gender_model, x_gen_test, x_gen_train, 150)
+        gen_shap_values, e = extract_shap(gender_model, x_test_gen_cnn, x_train_gen_cnn, 150)
         np.save(gen_shap_df_path, gen_shap_values)
     else:
         gen_shap_values = np.load(gen_shap_df_path)
 
     # Isolating shap values by class.
-    m_shap_list, f_shap_list = get_target_shap(gen_shap_values, x_gen_test, y_gen_test)
+    m_shap_list, f_shap_list = get_target_shap(gen_shap_values, x_test_gen_cnn, y_test_gen_encoded)
 
     # ------------------------ Analyzing Shap values ------------------------
     shap_np_scaled_sorted, shap_sorted_scaled_avg, shap_sorted_indexes = analyse_shap_values(m_shap_list)
@@ -52,14 +53,14 @@ def main():
 
     # Building obfuscation experiment data
     sigma_list = [x for x in range(1, 500)]
-    model_list = [("emotion", emo_model, y_emo_test, False), ("gender", gender_model, y_gen_test, True)]
+    model_list = [("emotion", emo_model, y_test_emo_encoded, False), ("gender", gender_model, y_test_gen_encoded, True)]
     obs_f_list = [(norm_noise, sigma_list)]
 
     # Sanity model performance check
-    evaluate_model(model_list, x_emo_test)
+    evaluate_model(model_list, x_test_emo_cnn)
 
     # Evaluating obfuscation functions
-    perf_list = evaluate_obfuscation_function(gen_shap_values, model_list, obs_f_list, x_gen_test)
+    perf_list = evaluate_obfuscation_function(gen_shap_values, model_list, obs_f_list, x_test_gen_cnn)
 
     # Plotting results
     plot_obs_f_performance(perf_list)
