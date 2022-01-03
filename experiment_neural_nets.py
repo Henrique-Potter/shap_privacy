@@ -53,7 +53,6 @@ def build_emo_model(input_sample):
 
 
 def build_emo_model2(input_sample):
-
 	input_shape_width = input_sample.shape[1]
 	input_shape_channels = input_sample.shape[2]
 
@@ -127,19 +126,16 @@ def build_fser_emo_model(input_sample):
 	model.add(Activation('relu'))
 	model.add(MaxPool2D(pool_size=(2, 2)))
 	model.add(Dropout(0.2))
-	model.summary()
 
 	model.add(Conv2D(filters=16, kernel_size=(5, 5), strides=(1, 1)))
 	model.add(Activation('relu'))
 	model.add(MaxPool2D(pool_size=(2, 2)))
 	model.add(Dropout(0.2))
-	model.summary()
 
 	model.add(Conv2D(filters=100, kernel_size=(5, 5), strides=(1, 1)))
 	model.add(Activation('relu'))
 	model.add(MaxPool2D(pool_size=(2, 2)))
 	model.add(Dropout(0.2))
-	model.summary()
 
 	model.add(Conv2D(filters=200, kernel_size=(2, 2), strides=(1, 1)))
 	model.add(Activation('relu'))

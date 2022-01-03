@@ -30,9 +30,9 @@ def spectrogram_image(y, sr, out, hop_length, n_mels):
     skimage.io.imsave(out, img)
 
 
-def train_model(model, model_path, batch, x_traincnn, y_train, x_testcnn, y_test, get_emotion_label):
+def train_model(model, model_path, batch, epoch, x_traincnn, y_train, x_testcnn, y_test, get_emotion_label):
     cl_backs = [PlotLosses(model_path, get_emotion_label), PerClassMetrics(model, (x_testcnn, y_test), 64)]
-    cnnhistory = model.fit(x_traincnn, y_train, batch_size=batch, epochs=1200, validation_data=(x_testcnn, y_test), callbacks=cl_backs)
+    cnnhistory = model.fit(x_traincnn, y_train, batch_size=batch, epochs=epoch, validation_data=(x_testcnn, y_test), callbacks=cl_backs)
     # Save the weights
     model.save(model_path)
     figure, axis = plt.subplots(2)
