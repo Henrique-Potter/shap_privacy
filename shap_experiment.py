@@ -16,7 +16,7 @@ print("Num GPUs Available: ", len(tf.config.list_physical_devices('GPU')))
 
 
 def main():
-    emo_model_path = 'emo_checkpoint/emodel_m2_all_aug_5k_16.h5'
+    emo_model_path = './emo_checkpoint/emodel_m2_all_aug_5k_16.h5'
     gender_model_path = './gmodel_checkpoint/gmodel_m2_all_aug_5k_16.h5'
 
     audio_files_path = "./NNDatasets/audio"
@@ -48,6 +48,7 @@ def main():
     m_shap_list, f_shap_list = get_target_shap(gen_shap_values, x_test_gen_cnn, y_test_gen_encoded)
 
     # ------------------------ Analyzing Shap values ------------------------
+    plot_shap_2(m_shap_list, f_shap_list)
     shap_np_scaled_sorted, shap_sorted_scaled_avg, shap_sorted_indexes = analyse_shap_values(m_shap_list)
     shap_np_scaled_sorted, shap_sorted_scaled_avg, shap_sorted_indexes = analyse_shap_values(f_shap_list)
 
@@ -324,7 +325,7 @@ def analyse_shap_values(m_shap_list):
     shap_sorted_scaled_avg = shap_samples_sum_sorted/shap_nr_samples
     shap_np_scaled_sorted = shap_np_scaled[:, shap_sorted_indexes]
 
-    for index in range(shap_nr_samples):
+    for index in range(int(shap_nr_samples/10)):
         plt.plot(x_list, shap_np_scaled_sorted[index, :], c='b', alpha=0.2)
     plt.plot(x_list, shap_sorted_scaled_avg, c='r')
     # plt.xticks(x_list, shap_sorted_indexes)
@@ -338,6 +339,26 @@ def analyse_shap_values(m_shap_list):
     plt.show()
 
     return shap_np_scaled_sorted, shap_sorted_scaled_avg, shap_sorted_indexes
+
+
+def plot_shap_2(m_shap_list, f_shap_list):
+    m_shap_np = np.array(m_shap_list)
+    f_shap_p = np.array(f_shap_list)
+    # temp = replace_outliers_by_std(temp, 3)
+    # m_shap_np = whiten(m_shap_np)
+    summation = np.mean(f_shap_p, axis=0) - np.mean(m_shap_np, axis=0)
+
+    std = np.std(m_shap_np) - np.std(f_shap_p)
+    plot_title = "Shap Value Mean (Male mean - Female mean)"
+    shap_nr_features = m_shap_np.shape[1]
+    x_list = ['C{}'.format(x) for x in range(shap_nr_features)]
+    plt.figure(figsize=(25, 10))
+    plt.bar(x_list, summation, yerr=std, ecolor='black', capsize=10)
+    plt.title(plot_title, fontsize=28)
+    plt.xlabel('Coefficient Order (Higher Order captures higher frequencies)', fontsize=22)
+    plt.ylabel('Mel Frequency Cepstrum Coefficient (Mean)', fontsize=22)
+    plt.xticks(fontsize=16)
+    plt.show()
 
 
 def analyse_timeseries_kmeans(m_shap_list):

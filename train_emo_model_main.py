@@ -1,6 +1,6 @@
 from pathlib import Path
 import tensorflow as tf
-from data_processing import pre_process_data, extract_mel_features2
+from data_processing import pre_process_data
 from experiment_neural_nets import build_emo_model, build_emo_model2, build_emo_model3
 from util.custom_functions import train_model
 

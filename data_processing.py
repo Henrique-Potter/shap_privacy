@@ -1,4 +1,5 @@
 import glob
+from multiprocessing import Process
 
 import numpy as np
 import librosa
@@ -11,10 +12,8 @@ from pandas import Series
 
 from tqdm import tqdm
 
-n_mfcc = 60
 
-
-def pre_process_data(audio_files_path, get_emotion_label=True, augment_data=False):
+def pre_process_data(audio_files_path, n_mfcc=40, get_emotion_label=True, augment_data=False):
 
     audio_files = glob.glob("{}/**/*.wav".format(audio_files_path), recursive=True)
 
@@ -27,8 +26,28 @@ def pre_process_data(audio_files_path, get_emotion_label=True, augment_data=Fals
 
     audio_raw_df_path = 'data/audio_data_raw_df.pkl'
 
+    import multiprocessing
+    from os import getpid
+
     if not Path(audio_raw_df_path).exists():
+
         print("Loading files and raw audio data.")
+        # audio_files_size = lst_np.shape[0]
+        # queue = multiprocessing.Queue()
+        # processes = []
+        # rets = []
+        #
+        # for index in range(0, 8):
+        #     p = Process(target=extract_raw_audio, args=(queue, audio_files[index]))
+        #     processes.append(p)
+        #     p.start()
+        # for p in processes:
+        #     ret = q.get()  # will block
+        #     rets.append(ret)
+        # for p in processes:
+        #     p.join()
+
+
         audio_raw_df = extract_raw_audio(audio_files)
         print("Loading files and raw audio data successful.")
         audio_raw_df.to_pickle(audio_raw_df_path)
@@ -190,7 +209,7 @@ def extract_mfcc_matrix_from_raw_ndarray_aug_shift(X_train, n_mfcc, shift_array,
     return audio_features_df.values, audio_features_df_pos_shift.values, audio_features_df_neg_shift.values
 
 
-def pre_process_fseer_data2(audio_files_path, get_emotion_label=True, augment_data=False):
+def pre_process_fseer_data(audio_files_path, n_mfcc=40, get_emotion_label=True, augment_data=False):
 
     audio_files = glob.glob("{}/**/*.wav".format(audio_files_path), recursive=True)
 
@@ -281,59 +300,6 @@ def pre_process_fseer_data2(audio_files_path, get_emotion_label=True, augment_da
     return X_train_mfcc, y_train_encoded, X_test_mfcc, y_test_encoded
 
 
-def pre_process_fseer_data(audio_files_path, get_emotion_label):
-
-    audio_files = glob.glob("{}/**/*.wav".format(audio_files_path), recursive=True)
-
-    audio_mel_df_path = 'data/fser_audio_data_df.pkl'
-
-    if not Path(audio_mel_df_path).exists():
-        print("Loading files and extracting features.")
-
-        audiol_features_df = extract_2d_mel_features(audio_files)
-        audiol_features_df.fillna(0, inplace=True)
-
-        audiol_features_df.to_pickle(audio_mel_df_path)
-    else:
-        print("Loading pre_extracted features from file.")
-        audiol_features_df = pd.read_pickle(audio_mel_df_path)
-
-    print(audiol_features_df)
-
-    # # # -1 and 1 scaling
-    # for column in tqdm(audiol_features_df.iloc[:, :-2].columns):
-    #     audiol_features_df[column] = audiol_features_df[column] / audiol_features_df[column].abs().max()
-
-    if get_emotion_label:
-        X_train, X_test, y_train, y_test = train_test_split(audiol_features_df.iloc[:, :-2],
-                                                            audiol_features_df.iloc[:, -2:-1],
-                                                            test_size=0.2, random_state=6)
-    else:
-        X_train, X_test, y_train, y_test = train_test_split(audiol_features_df.iloc[:, :-2],
-                                                            audiol_features_df.iloc[:, -1:],
-                                                            test_size=0.33, random_state=6)
-
-    from keras.utils import np_utils
-    from sklearn.preprocessing import LabelEncoder
-
-    X_train = np.array(X_train)
-    y_train = np.ravel(np.array(y_train))
-    X_test = np.array(X_test)
-    y_test = np.ravel(np.array(y_test))
-
-    lb = LabelEncoder()
-    y_train_encoded = np_utils.to_categorical(lb.fit_transform(y_train))
-    y_test_encoded = np_utils.to_categorical(lb.fit_transform(y_test))
-    # y_train_encoded = lb.fit_transform(y_train)
-    # y_test_encoded = lb.fit_transform(y_test)
-    print(y_train)
-    print(y_train_encoded)
-    x_traincnn = np.expand_dims(X_train, axis=2)
-    x_testcnn = np.expand_dims(X_test, axis=2)
-
-    return x_traincnn, y_train_encoded, x_testcnn, y_test_encoded
-
-
 def extract_raw_audio(audio_files):
 
     audio_raw_df = pd.DataFrame()
@@ -364,14 +330,14 @@ def extract_raw_audio(audio_files):
     return full_raw_audio_data_df
 
 
-def extract_mfcc_feature(audio_bin, audio_features_df, audio_labels_df, emo_label, gen_label, sample_rate):
-    sample_rate = np.array(sample_rate)
-    mfccs = librosa.feature.mfcc(y=audio_bin, sr=sample_rate, n_mfcc=40).T
-    mfccs_mean = np.mean(mfccs, axis=0)
-    # plot_mfccs(full_fname)
-    audio_labels_df = audio_labels_df.append(Series([emo_label, gen_label]), ignore_index=True)
-    audio_features_df = audio_features_df.append(Series(mfccs_mean), ignore_index=True)
-    return audio_features_df, audio_labels_df
+# def extract_mfcc_feature(audio_bin, audio_features_df, audio_labels_df, emo_label, gen_label, sample_rate):
+#     sample_rate = np.array(sample_rate)
+#     mfccs = librosa.feature.mfcc(y=audio_bin, sr=sample_rate, n_mfcc=40).T
+#     mfccs_mean = np.mean(mfccs, axis=0)
+#     # plot_mfccs(full_fname)
+#     audio_labels_df = audio_labels_df.append(Series([emo_label, gen_label]), ignore_index=True)
+#     audio_features_df = audio_features_df.append(Series(mfccs_mean), ignore_index=True)
+#     return audio_features_df, audio_labels_df
 
 
 def plot_mfccs(full_fname):
@@ -577,6 +543,9 @@ def parse_fname_to_only_emo_label(file_name):
     elif file_name[5] == 'N':
         label = 'neutral'
 
+    # if label is None:
+    #     raise Exception('No emotion set')
+
     return label
 
 
@@ -606,6 +575,7 @@ def parse_fname_to_gender_label(file_name):
             label = 'male'
         elif int(file_name[:2]) == 16:
             label = 'female'
+
     # Emovo parse
     elif f_name_len == 13:
         if file_name[4] == 'm':
