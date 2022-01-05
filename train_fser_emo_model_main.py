@@ -1,4 +1,3 @@
-from pathlib import Path
 import tensorflow as tf
 from data_processing import *
 from experiment_neural_nets import build_fser_emo_model
@@ -29,7 +28,7 @@ def main():
 
     print("Starting model training!")
     if not Path(model_path).exists():
-        train_model(model, model_path, 64, x_traincnn, y_train, x_testcnn, y_test, get_emotion_label)
+        train_model(model, model_path, 64, 1200, x_traincnn, y_train, x_testcnn, y_test, get_emotion_label)
         test_acc = model.evaluate(x_testcnn, y_test, batch_size=128)
         train_acc = model.evaluate(x_traincnn, y_train, batch_size=128)
         print("Emo Model Train perf is:{}, Test perf is:{}".format(train_acc, test_acc))

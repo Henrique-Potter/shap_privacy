@@ -53,104 +53,235 @@ def main():
     shap_np_scaled_sorted, shap_sorted_scaled_avg, shap_sorted_indexes = analyse_shap_values(f_shap_list)
 
     # Building obfuscation experiment data
-    sigma_list = [x for x in range(1, 500)]
-    model_list = [("emotion", emo_model, y_test_emo_encoded, False), ("gender", gender_model, y_test_gen_encoded, True)]
-    obs_f_list = [(norm_noise, sigma_list)]
 
-    # Sanity model performance check
+    # model_list = [("emotion", emo_model, y_test_emo_encoded, False), ("gender", gender_model, y_test_gen_encoded, True)]
+
+    emo_model_dict = {'model_name': "emotion_model", 'model': emo_model, 'ground_truth': y_test_emo_encoded, 'privacy_target': False}
+    gen_model_dict = {'model_name': "gen_model", 'model': gender_model, 'ground_truth': y_test_gen_encoded, 'privacy_target': True}
+
+    model_list = [emo_model_dict, gen_model_dict]
+
+    #Noise intensity List
+    norm_noise_list = [x/10 for x in range(1, 50, 10)]
+    obfuscation_f_list = []
+    obf_by_gender = {'obf_f_handler': obfuscate_by_class, 'intensities': norm_noise_list, 'kwargs': {'class_index': 0}}
+    obfuscation_f_list.append(obf_by_gender)
+
+    # Sanity check model performance check
     evaluate_model(model_list, x_test_emo_cnn)
 
     # Evaluating obfuscation functions
-    perf_list = evaluate_obfuscation_function(gen_shap_values, model_list, obs_f_list, x_test_gen_cnn)
+    perf_list = evaluate_obfuscation_function(gen_shap_values, model_list, obfuscation_f_list, x_test_gen_cnn)
 
     # Plotting results
     plot_obs_f_performance(perf_list)
 
-    # Parsing by class data
-    parsed_perf_by_class = parse_per_class_perf_data(perf_list)
-    # Plotting by class data
-    plot_obs_f_performance_by_class(parsed_perf_by_class)
+    # # Parsing by class data
+    # parsed_perf_by_class = parse_per_class_perf_data(perf_list)
+    # # Plotting by class data
+    # plot_obs_f_performance_by_class(parsed_perf_by_class)
+
+
+def evaluate_obfuscation_function(shap_values, model_list, obf_f_list, x_model_input):
+    model_perf_list = []
+
+    target_mdl = None
+    for model_dict in model_list:
+        if model_dict['privacy_target']:
+            target_mdl = model_dict
+
+    for model_dict in model_list:
+
+        model_name = model_dict['model_name']
+        model = model_dict['model']
+        y_model_input = model_dict['ground_truth']
+        privacy_target = model_dict['privacy_target']
+
+        obf_f_perf_list = []
+
+        for obf_f_dict in obf_f_list:
+
+            obf_f = obf_f_dict['obf_f_handler']
+            obf_f_str_list = obf_f_dict['intensities']
+            kwargs = obf_f_dict['kwargs']
+
+            # Function Name
+            obf_f_name = obf_f.__name__
+
+            # Return list of noise str parameters
+            obfuscated_model_perf_loss = []
+            obfuscated_model_perf_acc = []
+            obfuscated_model_by_cls_perf = []
+
+            metrics_perf_list = []
+
+            for obf_intensity in tqdm(obf_f_str_list):
+                # Obfuscating only males index class is 0
+                # Applying Obfuscation Function
+                obfuscated_x = obf_f(shap_values, x_model_input, target_mdl['ground_truth'], obf_intensity, **kwargs)
+                # --- Collecting Metrics ----
+                obfuscated_perf = model.evaluate(obfuscated_x, y_model_input)
+                obfuscated_model_perf_loss.append(obfuscated_perf[0])
+                obfuscated_model_perf_acc.append(obfuscated_perf[1])
+                # By class evaluation
+                by_class_perf = evaluate_by_class(model, obfuscated_x, y_model_input)
+                obfuscated_model_by_cls_perf.append(by_class_perf)
+
+            metrics_perf_list.append(("loss", obfuscated_model_perf_loss))
+            metrics_perf_list.append(("acc", obfuscated_model_perf_acc))
+            metrics_perf_list.append(("by_class", obfuscated_model_by_cls_perf))
+
+            obf_f_perf_list.append((obf_f_name, metrics_perf_list))
+
+        model_perf_list.append((model_name, obf_f_perf_list))
+
+        tf.keras.backend.clear_session()
+
+    return model_perf_list
 
 
 def parse_per_class_perf_data(perf_data):
     perf_data_by_class = []
     for perf in perf_data:
-        if perf[2] == "by_class":
-            model_name = perf[0]
-            obf_f_name = perf[1]
-            nr_classes = len(perf[3][0])
-            nr_noise_levels = len(perf[3])
-            perf_list = perf[3]
-            for class_index in range(nr_classes):
-                class_perf_acc = []
-                class_perf_loss = []
-                for noise_str_index in range(nr_noise_levels):
-                    class_perf_acc.append(perf_list[noise_str_index][class_index][1][1])
-                    class_perf_loss.append(perf_list[noise_str_index][class_index][1][0])
-                perf_data_by_class.append((model_name, obf_f_name, 'acc', class_perf_acc, class_index))
-                perf_data_by_class.append((model_name, obf_f_name, 'loss', class_perf_loss, class_index))
+        model_name = perf[0]
+        obf_f_name = perf[1]
+        nr_classes = len(perf[3][0])
+        nr_noise_levels = len(perf[3])
+        perf_list = perf[3]
+        for class_index in range(nr_classes):
+            class_perf_acc = []
+            class_perf_loss = []
+            for noise_str_index in range(nr_noise_levels):
+                class_perf_acc.append(perf_list[noise_str_index][class_index][1][1])
+                class_perf_loss.append(perf_list[noise_str_index][class_index][1][0])
+            perf_data_by_class.append((model_name, obf_f_name, 'acc', class_perf_acc, class_index))
+            perf_data_by_class.append((model_name, obf_f_name, 'loss', class_perf_loss, class_index))
     return perf_data_by_class
 
 
 def evaluate_model(model_list, x_test):
-    for model_name, model, y_model_input, target in model_list:
+    for model_dict in model_list:
+        model_name = model_dict['model_name']
+        model = model_dict['model']
+        y_model_input = model_dict['ground_truth']
         test_perf = model.evaluate(x_test, y_model_input)
         print("{} Model Test perf is:{}".format(model_name, test_perf))
 
 
 # Plots performance data for N number of models with N number of obfuscation functions
 def plot_obs_f_performance(perf_list):
-    title_loss = "NN models Loss"
-    title_acc = "NN models Accuracy"
-    nr_noise_levels = len(perf_list[0][3])
-    x_list = [x for x in range(0, nr_noise_levels)]
-    #figure, axis = plt.subplots(2, 2)
-
-    fig = plt.figure()
-    #fig.set_size_inches(18.5, 10.5)
-    fig.set_dpi(100)
-    gs = fig.add_gridspec(2)
-    ax1 = fig.add_subplot(gs[0])
-    ax2 = fig.add_subplot(gs[1])
 
     header = []
-    row_data = []
-    for model_name, obs_f_name, perf_name, perf_data in perf_list:
-        if perf_name == "by_class":
-            continue
+    collum_data = []
 
-        lbl = "{} mdl w/ {}".format(model_name, obs_f_name)
-        if perf_name == "loss":
-            ax1.plot(x_list, perf_data, label=lbl)
-        else:
-            ax2.plot(x_list, perf_data, label=lbl)
-            header.append(lbl)
-            first, half, last, one_quarter, three_quarters = get_data_samples(perf_data)
-            row_data.append([first, one_quarter, half, three_quarters, last])
+    for model in perf_list:
 
-    ax1.set_title(title_loss)
-    ax1.set_ylabel('loss')
-    ax1.set_xlabel('Noise str level')
-    ax1.legend()
-    ax2.set_title(title_acc)
-    ax2.set_ylabel('accuracy')
-    ax2.set_xlabel('Noise str level')
-    ax2.legend()
-    plt.subplots_adjust(hspace=0.7)
-    plt.show()
+        model_name = model[0]
+        obf_list = model[1]
 
+        for obf_f in obf_list:
+            obf_f_name = obf_f[0]
+            obf_f_eval_metrics = obf_f[1]
+
+            # header = []
+            # collum_data = []
+
+            for metric in obf_f_eval_metrics:
+                metric_name = metric[0]
+                metric_data = metric[1]
+
+                title = "{} NN model {}".format(model_name, metric_name)
+                lbl = "{} mdl w/ {}".format(model_name, obf_f_name)
+
+                if metric_name == "loss":
+                    nr_intensity_levels = len(metric_data)
+                    x_list = [x for x in range(0, nr_intensity_levels)]
+                    fig = plt.figure()
+                    fig.set_dpi(100)
+
+                    plt.plot(x_list, metric_data, label=lbl)
+                    plt.legend()
+                    plt.title(title)
+                    plt.xlabel('{} intensity level'.format(obf_f_name))
+                    plt.show()
+
+                elif metric_name == "acc":
+                    header.append(lbl)
+                    first, half, last, one_quarter, three_quarters = get_data_samples(metric_data)
+                    collum_data.append([first, one_quarter, half, three_quarters, last])
+
+                elif metric_name == "by_class":
+                    # Parsing by class data
+                    parsed_perf_by_class = parse_per_class_perf_data(perf_list)
+                    plot_obs_f_performance_by_class(parsed_perf_by_class)
+                    continue
+
+    # Plotting overview table
     fig, ax = plt.subplots()
     fig.set_dpi(100)
     # hide axes
     fig.patch.set_visible(False)
     ax.axis('off')
     ax.axis('tight')
-    df = pd.DataFrame(np.array(row_data).transpose(), columns=header)
+
+    df = pd.DataFrame(np.array(collumn_data).transpose(), columns=header)
 
     tab2 = ax.table(cellText=df.values, colLabels=df.columns, loc='center', cellLoc='center')
     tab2.auto_set_column_width(col=list(range(len(df.columns))))
     fig.tight_layout()
     plt.show()
+
+    # title_loss = "NN models Loss"
+    # title_acc = "NN models Accuracy"
+    # nr_noise_levels = len(perf_list[0][3])
+    # x_list = [x for x in range(0, nr_noise_levels)]
+    # #figure, axis = plt.subplots(2, 2)
+    #
+    # fig = plt.figure()
+    # #fig.set_size_inches(18.5, 10.5)
+    # fig.set_dpi(100)
+    # gs = fig.add_gridspec(2)
+    # ax1 = fig.add_subplot(gs[0])
+    # ax2 = fig.add_subplot(gs[1])
+    #
+    # header = []
+    # row_data = []
+    # for model_name, obs_f_name, perf_name, perf_data in perf_list:
+    #     if perf_name == "by_class":
+    #         continue
+    #
+    #     lbl = "{} mdl w/ {}".format(model_name, obs_f_name)
+    #     if perf_name == "loss":
+    #         ax1.plot(x_list, perf_data, label=lbl)
+    #     else:
+    #         ax2.plot(x_list, perf_data, label=lbl)
+    #         header.append(lbl)
+    #         first, half, last, one_quarter, three_quarters = get_data_samples(perf_data)
+    #         row_data.append([first, one_quarter, half, three_quarters, last])
+    #
+    # ax1.set_title(title_loss)
+    # ax1.set_ylabel('loss')
+    # ax1.set_xlabel('Noise str level')
+    # ax1.legend()
+    # ax2.set_title(title_acc)
+    # ax2.set_ylabel('accuracy')
+    # ax2.set_xlabel('Noise str level')
+    # ax2.legend()
+    # plt.subplots_adjust(hspace=0.7)
+    # plt.show()
+    #
+    # fig, ax = plt.subplots()
+    # fig.set_dpi(100)
+    # # hide axes
+    # fig.patch.set_visible(False)
+    # ax.axis('off')
+    # ax.axis('tight')
+    # df = pd.DataFrame(np.array(row_data).transpose(), columns=header)
+    #
+    # tab2 = ax.table(cellText=df.values, colLabels=df.columns, loc='center', cellLoc='center')
+    # tab2.auto_set_column_width(col=list(range(len(df.columns))))
+    # fig.tight_layout()
+    # plt.show()
 
 
 # Plots performance data for N number of models with N number of obfuscation functions
@@ -214,39 +345,6 @@ def get_data_samples(perf_data):
     one_quarter = round(perf_data[int(perf_dt_sz / 4)], 2)
     last = round(perf_data[int(perf_dt_sz - 1)], 2)
     return first, half, last, one_quarter, three_quarters
-
-
-def evaluate_obfuscation_function(shap_values, model_dict, obs_f_dic, x_model_input):
-    perf_dict = []
-
-    target_mdl = None
-    for mdl in model_dict:
-        if mdl[3]:
-            target_mdl = mdl
-
-    for model_name, model, y_model_input, target in model_dict:
-        for obs_f, obs_f_str_list in obs_f_dic:
-            # Return list of noise str parameters
-            obfuscated_model_perf_loss = []
-            obfuscated_model_perf_acc = []
-            obfuscated_model_by_cls_perf = []
-
-            for obs_str in tqdm(obs_f_str_list):
-                # Obfuscating only males
-                obfuscated_x = obfuscate_by_gender(shap_values, x_model_input, target_mdl[2], obs_str, obs_f)
-                obfuscated_perf = model.evaluate(obfuscated_x, y_model_input)
-                obfuscated_model_perf_loss.append(obfuscated_perf[0])
-                obfuscated_model_perf_acc.append(obfuscated_perf[1])
-
-                by_class_perf = evaluate_by_class(model, obfuscated_x, y_model_input)
-                obfuscated_model_by_cls_perf.append(by_class_perf)
-
-            perf_dict.append((model_name, obs_f.__name__, "loss", obfuscated_model_perf_loss))
-            perf_dict.append((model_name, obs_f.__name__, "acc", obfuscated_model_perf_acc))
-            perf_dict.append((model_name, obs_f.__name__, "by_class", obfuscated_model_by_cls_perf))
-
-        tf.keras.backend.clear_session()
-    return perf_dict
 
 
 def evaluate_by_class(model, obfuscated_x, y_model_input):
