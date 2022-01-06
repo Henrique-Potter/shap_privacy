@@ -1,9 +1,12 @@
+import time
+
 import pandas as pd
 import shap
 import numpy as np
 import tensorflow as tf
 from pathlib import Path
 
+from blume.table import table
 from scipy.cluster.vq import whiten
 from tqdm import tqdm
 from tensorflow.keras.models import load_model
@@ -53,33 +56,30 @@ def main():
     shap_np_scaled_sorted, shap_sorted_scaled_avg, shap_sorted_indexes = analyse_shap_values(f_shap_list)
 
     # Building obfuscation experiment data
-
-    # model_list = [("emotion", emo_model, y_test_emo_encoded, False), ("gender", gender_model, y_test_gen_encoded, True)]
-
     emo_model_dict = {'model_name': "emotion_model", 'model': emo_model, 'ground_truth': y_test_emo_encoded, 'privacy_target': False}
     gen_model_dict = {'model_name': "gen_model", 'model': gender_model, 'ground_truth': y_test_gen_encoded, 'privacy_target': True}
 
     model_list = [emo_model_dict, gen_model_dict]
 
-    #Noise intensity List
-    norm_noise_list = [x/10 for x in range(1, 50, 10)]
+    # Building Obfuscation list functions
+    # Noise intensity List
+    norm_noise_list = [x/10 for x in range(1, 500, 10)]
     obfuscation_f_list = []
-    obf_by_gender = {'obf_f_handler': obfuscate_by_class, 'intensities': norm_noise_list, 'kwargs': {'class_index': 0}}
-    obfuscation_f_list.append(obf_by_gender)
+    obf_by_male_gender = {'obf_f_handler': obfuscate_by_class, 'intensities': norm_noise_list, 'kwargs': {'class_index':0}, 'label':'obf_male'}
+    obf_by_female_gender = {'obf_f_handler': obfuscate_by_class, 'intensities': norm_noise_list, 'kwargs': {'class_index':1}, 'label':'obf_female'}
+    obfuscation_f_list.append(obf_by_male_gender)
+    obfuscation_f_list.append(obf_by_female_gender)
 
     # Sanity check model performance check
     evaluate_model(model_list, x_test_emo_cnn)
+
+    time.time()
 
     # Evaluating obfuscation functions
     perf_list = evaluate_obfuscation_function(gen_shap_values, model_list, obfuscation_f_list, x_test_gen_cnn)
 
     # Plotting results
     plot_obs_f_performance(perf_list)
-
-    # # Parsing by class data
-    # parsed_perf_by_class = parse_per_class_perf_data(perf_list)
-    # # Plotting by class data
-    # plot_obs_f_performance_by_class(parsed_perf_by_class)
 
 
 def evaluate_obfuscation_function(shap_values, model_list, obf_f_list, x_model_input):
@@ -98,7 +98,6 @@ def evaluate_obfuscation_function(shap_values, model_list, obf_f_list, x_model_i
         privacy_target = model_dict['privacy_target']
 
         obf_f_perf_list = []
-
         for obf_f_dict in obf_f_list:
 
             obf_f = obf_f_dict['obf_f_handler']
@@ -106,7 +105,7 @@ def evaluate_obfuscation_function(shap_values, model_list, obf_f_list, x_model_i
             kwargs = obf_f_dict['kwargs']
 
             # Function Name
-            obf_f_name = obf_f.__name__
+            obf_f_name = obf_f_dict['label']
 
             # Return list of noise str parameters
             obfuscated_model_perf_loss = []
@@ -140,22 +139,22 @@ def evaluate_obfuscation_function(shap_values, model_list, obf_f_list, x_model_i
     return model_perf_list
 
 
-def parse_per_class_perf_data(perf_data):
+def parse_per_class_perf_data(by_class_perf_data):
     perf_data_by_class = []
-    for perf in perf_data:
-        model_name = perf[0]
-        obf_f_name = perf[1]
-        nr_classes = len(perf[3][0])
-        nr_noise_levels = len(perf[3])
-        perf_list = perf[3]
-        for class_index in range(nr_classes):
-            class_perf_acc = []
-            class_perf_loss = []
-            for noise_str_index in range(nr_noise_levels):
-                class_perf_acc.append(perf_list[noise_str_index][class_index][1][1])
-                class_perf_loss.append(perf_list[noise_str_index][class_index][1][0])
-            perf_data_by_class.append((model_name, obf_f_name, 'acc', class_perf_acc, class_index))
-            perf_data_by_class.append((model_name, obf_f_name, 'loss', class_perf_loss, class_index))
+    nr_obf_intsties = len(by_class_perf_data)
+    nr_classes = len(by_class_perf_data[0])
+
+    # Restructuring data from by intensity->classes to class->intensities
+    for class_index in range(nr_classes):
+        class_perf_acc = []
+        class_perf_loss = []
+        for intsty_index in range(nr_obf_intsties):
+            # Getting both acc and loss
+            class_perf_loss.append(by_class_perf_data[intsty_index][class_index][1][0])
+            class_perf_acc.append(by_class_perf_data[intsty_index][class_index][1][1])
+
+        perf_data_by_class.append((class_index, class_perf_loss, class_perf_acc))
+
     return perf_data_by_class
 
 
@@ -170,22 +169,21 @@ def evaluate_model(model_list, x_test):
 
 # Plots performance data for N number of models with N number of obfuscation functions
 def plot_obs_f_performance(perf_list):
+    plt.clf()
 
     header = []
     collum_data = []
 
+    # Iterating over models evals
     for model in perf_list:
-
         model_name = model[0]
         obf_list = model[1]
-
+        obf_f_index = 0
+        # Iterating over obfuscation function's evals
         for obf_f in obf_list:
             obf_f_name = obf_f[0]
             obf_f_eval_metrics = obf_f[1]
-
-            # header = []
-            # collum_data = []
-
+            # Iterating over metrics
             for metric in obf_f_eval_metrics:
                 metric_name = metric[0]
                 metric_data = metric[1]
@@ -194,106 +192,93 @@ def plot_obs_f_performance(perf_list):
                 lbl = "{} mdl w/ {}".format(model_name, obf_f_name)
 
                 if metric_name == "loss":
-                    nr_intensity_levels = len(metric_data)
-                    x_list = [x for x in range(0, nr_intensity_levels)]
-                    fig = plt.figure()
-                    fig.set_dpi(100)
-
-                    plt.plot(x_list, metric_data, label=lbl)
-                    plt.legend()
-                    plt.title(title)
-                    plt.xlabel('{} intensity level'.format(obf_f_name))
-                    plt.show()
+                    line_plot_metric_data(lbl, metric_data, obf_f_name, title)
 
                 elif metric_name == "acc":
                     header.append(lbl)
                     first, half, last, one_quarter, three_quarters = get_data_samples(metric_data)
                     collum_data.append([first, one_quarter, half, three_quarters, last])
 
+                    line_plot_metric_data(lbl, metric_data, obf_f_name, title)
+
                 elif metric_name == "by_class":
                     # Parsing by class data
-                    parsed_perf_by_class = parse_per_class_perf_data(perf_list)
-                    plot_obs_f_performance_by_class(parsed_perf_by_class)
-                    continue
+                    parsed_perf_by_class = parse_per_class_perf_data(metric_data)
+                    plot_obs_f_performance_by_class(model_name, obf_f_name, obf_f_index, parsed_perf_by_class)
+            obf_f_index += 1
 
-    # Plotting overview table
     fig, ax = plt.subplots()
-    fig.set_dpi(100)
-    # hide axes
+    fig.set_size_inches(17, 10)
+    fig.set_dpi(150)
     fig.patch.set_visible(False)
     ax.axis('off')
     ax.axis('tight')
-
-    df = pd.DataFrame(np.array(collumn_data).transpose(), columns=header)
-
-    tab2 = ax.table(cellText=df.values, colLabels=df.columns, loc='center', cellLoc='center')
-    tab2.auto_set_column_width(col=list(range(len(df.columns))))
-    fig.tight_layout()
+    row_header = ['First Value', '25%', '50%', '75%', 'Last']
+    models_acc_data = np.array(collum_data).transpose()
+    tab = table(plt.gca(),
+                cellText=models_acc_data,
+                rowLabels=row_header,
+                colLabels=header,
+                loc='center',
+                cellLoc='center')
+    tab.auto_set_column_width(col=list(range(len(header))))
+    tab.scale(1, 2)
+    tab.set_fontsize(10)
+    #
+    # fig.tight_layout()
+    plt.title('Models ACC overview')
     plt.show()
+    plt.clf()
 
-    # title_loss = "NN models Loss"
-    # title_acc = "NN models Accuracy"
-    # nr_noise_levels = len(perf_list[0][3])
-    # x_list = [x for x in range(0, nr_noise_levels)]
-    # #figure, axis = plt.subplots(2, 2)
-    #
-    # fig = plt.figure()
-    # #fig.set_size_inches(18.5, 10.5)
-    # fig.set_dpi(100)
-    # gs = fig.add_gridspec(2)
-    # ax1 = fig.add_subplot(gs[0])
-    # ax2 = fig.add_subplot(gs[1])
-    #
-    # header = []
-    # row_data = []
-    # for model_name, obs_f_name, perf_name, perf_data in perf_list:
-    #     if perf_name == "by_class":
-    #         continue
-    #
-    #     lbl = "{} mdl w/ {}".format(model_name, obs_f_name)
-    #     if perf_name == "loss":
-    #         ax1.plot(x_list, perf_data, label=lbl)
-    #     else:
-    #         ax2.plot(x_list, perf_data, label=lbl)
-    #         header.append(lbl)
-    #         first, half, last, one_quarter, three_quarters = get_data_samples(perf_data)
-    #         row_data.append([first, one_quarter, half, three_quarters, last])
-    #
-    # ax1.set_title(title_loss)
-    # ax1.set_ylabel('loss')
-    # ax1.set_xlabel('Noise str level')
-    # ax1.legend()
-    # ax2.set_title(title_acc)
-    # ax2.set_ylabel('accuracy')
-    # ax2.set_xlabel('Noise str level')
-    # ax2.legend()
-    # plt.subplots_adjust(hspace=0.7)
-    # plt.show()
-    #
+    # # Plotting overview table
     # fig, ax = plt.subplots()
     # fig.set_dpi(100)
+    # fig.set_size_inches(9, 10)
     # # hide axes
     # fig.patch.set_visible(False)
     # ax.axis('off')
     # ax.axis('tight')
-    # df = pd.DataFrame(np.array(row_data).transpose(), columns=header)
     #
-    # tab2 = ax.table(cellText=df.values, colLabels=df.columns, loc='center', cellLoc='center')
-    # tab2.auto_set_column_width(col=list(range(len(df.columns))))
+    # row_header = ['First Value', '25%', '50%', '75%', 'Last']
+    # models_acc_data = np.array(collum_data).transpose()
+    #
+    # tab = table(plt.gca(),
+    #             cellText=models_acc_data,
+    #             rowLabels=row_header,
+    #             colLabels=header,
+    #             loc='center',
+    #             cellLoc='center')
+    #
+    # tab.auto_set_column_width(col=list(range(len(header))))
     # fig.tight_layout()
     # plt.show()
+    # plt.clf()
+
+
+def line_plot_metric_data(lbl, metric_data, obf_f_name, title):
+    nr_intensity_levels = len(metric_data)
+    x_list = [x for x in range(0, nr_intensity_levels)]
+    fig = plt.figure()
+    fig.set_dpi(100)
+    plt.plot(x_list, metric_data, label=lbl)
+    plt.legend()
+    plt.title(title)
+    plt.xlabel('{} intensity level'.format(obf_f_name))
+    # plt.title('{} by Obfuscation Intensity for {}'.format(title, obf_f_name))
+    plt.show()
+    plt.clf()
+    return x_list
 
 
 # Plots performance data for N number of models with N number of obfuscation functions
-def plot_obs_f_performance_by_class(perf_list):
+def plot_obs_f_performance_by_class(model_name, obf_f_name, obf_f_index, parsed_perf_by_class):
     title_loss = "NN models Loss"
     title_acc = "NN models Accuracy"
-    nr_noise_levels = len(perf_list[0][3])
-    x_list = [x for x in range(0, nr_noise_levels)]
-    # figure, axis = plt.subplots(2, 2)
+    nr_intensities = len(parsed_perf_by_class[0][1])
+    x_list = [x for x in range(0, nr_intensities)]
 
     fig = plt.figure()
-    fig.set_size_inches(18, 10)
+    fig.set_size_inches(17, 10)
     fig.set_dpi(200)
     gs = fig.add_gridspec(2)
     ax1 = fig.add_subplot(gs[0])
@@ -301,40 +286,50 @@ def plot_obs_f_performance_by_class(perf_list):
 
     header = []
     row_data = []
-    for model_name, obs_f_name, perf_name, perf_data, class_nr in perf_list:
-        lbl = "{}, {}, class {}".format(model_name[0], obs_f_name[0], class_nr)
-        if perf_name == "loss":
-            ax1.plot(x_list, perf_data, label=lbl)
-        else:
-            ax2.plot(x_list, perf_data, label=lbl)
-            header.append(lbl)
-            first, half, last, one_quarter, three_quarters = get_data_samples(perf_data)
-            row_data.append([first, one_quarter, half, three_quarters, last])
+    for class_nr, class_perf_loss, class_perf_acc in parsed_perf_by_class:
+        lbl = "Class {}".format(class_nr)
+
+        ax1.plot(x_list, class_perf_loss, label=lbl)
+        ax2.plot(x_list, class_perf_acc, label=lbl)
+        header.append(lbl)
+        first, half, last, one_quarter, three_quarters = get_data_samples(class_perf_acc)
+        row_data.append([first, one_quarter, half, three_quarters, last])
 
     ax1.set_title(title_loss)
     ax1.set_ylabel('loss')
-    ax1.set_xlabel('Noise str level')
+    ax1.set_xlabel('Noise Intensity level')
     ax1.legend()
     ax2.set_title(title_acc)
     ax2.set_ylabel('accuracy')
-    ax2.set_xlabel('Noise str level')
+    ax2.set_xlabel('Noise Intensity level')
     ax2.legend()
     plt.subplots_adjust(hspace=0.7)
+    plt.title('Model Accuracy and Loss by Obfuscation Intensity for {}'.format(obf_f_name))
     plt.show()
+    plt.clf()
 
     fig, ax = plt.subplots()
-    fig.set_size_inches(18, 10)
-    fig.set_dpi(200)
-    # hide axes
+    fig.set_size_inches(14, 10)
+    fig.set_dpi(150)
     fig.patch.set_visible(False)
     ax.axis('off')
     ax.axis('tight')
-    df = pd.DataFrame(np.array(row_data).transpose(), columns=header)
-
-    tab2 = ax.table(cellText=df.values, colLabels=df.columns, loc='center', cellLoc='center')
-    tab2.auto_set_column_width(col=list(range(len(df.columns))))
-    fig.tight_layout()
+    row_header = ['First Value', '25%', '50%', '75%', 'Last']
+    models_acc_data = np.array(row_data).transpose()
+    tab = table(plt.gca(),
+                cellText=models_acc_data,
+                rowLabels=row_header,
+                colLabels=header,
+                loc='center',
+                cellLoc='center')
+    tab.auto_set_column_width(col=list(range(len(header))))
+    tab.scale(1, 2)
+    tab.set_fontsize(10)
+    #
+    # fig.tight_layout()
+    plt.title('{} Accuracy Overview for {}'.format(model_name,obf_f_name))
     plt.show()
+    plt.clf()
 
 
 def get_data_samples(perf_data):
@@ -349,10 +344,7 @@ def get_data_samples(perf_data):
 
 def evaluate_by_class(model, obfuscated_x, y_model_input):
 
-    # Isolating male indexes
-    # ml_only_index = y_model_input[2][:, 0] == 1
     nr_classes = y_model_input.shape[1]
-
     by_class_perf = []
 
     for cls_index in range(nr_classes):
