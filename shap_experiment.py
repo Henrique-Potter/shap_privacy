@@ -436,9 +436,11 @@ def plot_shap_2(m_shap_list, f_shap_list):
     f_shap_p = np.array(f_shap_list)
     # temp = replace_outliers_by_std(temp, 3)
     # m_shap_np = whiten(m_shap_np)
-    summation = np.mean(f_shap_p, axis=0) - np.mean(m_shap_np, axis=0)
+    summation = np.mean(f_shap_p, axis=0)
+                # - np.mean(m_shap_np, axis=0)
 
-    std = np.std(m_shap_np) - np.std(f_shap_p)
+    std = np.std(m_shap_np)
+          # - np.std(f_shap_p)
     plot_title = "Shap Value Mean (Male mean - Female mean)"
     shap_nr_features = m_shap_np.shape[1]
     x_list = ['C{}'.format(x) for x in range(shap_nr_features)]
