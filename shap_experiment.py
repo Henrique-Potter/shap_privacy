@@ -13,7 +13,7 @@ from tensorflow.keras.models import load_model
 import matplotlib.pyplot as plt
 from data_processing import pre_process_data
 from obfuscation_functions import *
-from util.custom_functions import replace_outliers_by_std
+from util.custom_functions import replace_outliers_by_std, mean_std_analysis
 
 print("Num GPUs Available: ", len(tf.config.list_physical_devices('GPU')))
 
@@ -23,7 +23,8 @@ def main():
     gender_model_path = './gmodel_checkpoint/gmodel_m2_all_aug_5k_16.h5'
 
     audio_files_path = "./NNDatasets/audio"
-    gen_shap_df_path = './data/emo_shap_df.npy'
+    gen_shap_df_path = './data/gen_shap_df.npy'
+    emo_shap_df_path = './data/emo_shap_df.npy'
 
     print("Pre-processing audio files!")
     x_train_emo_cnn, y_train_emo_encoded, x_test_emo_cnn, y_test_emo_encoded = pre_process_data(audio_files_path, get_emotion_label=True)
@@ -34,26 +35,31 @@ def main():
     train_equal_sum = np.sum(x_train_emo_cnn != x_train_gen_cnn)
     test_equal_sum = np.sum(x_test_emo_cnn != x_test_gen_cnn)
 
-    print("Loading trained Neural Nets")
-    emo_model = load_model(emo_model_path)
-    gender_model = load_model(gender_model_path)
+    if train_equal_sum and test_equal_sum:
+        print("Train and test are NOT the same")
 
-    # Extracting SHAP values
-    if not Path(gen_shap_df_path).exists():
-        print("Calculating Shap values")
-        # Generating Shap Values
-        gen_shap_values, e = extract_shap(gender_model, x_test_gen_cnn, x_train_gen_cnn, 150)
-        np.save(gen_shap_df_path, gen_shap_values)
-    else:
-        gen_shap_values = np.load(gen_shap_df_path)
+    print("Loading trained Neural Nets")
+    gender_model = load_model(gender_model_path)
+    emo_model = load_model(emo_model_path)
+
+    print("Loading shap values")
+    gen_shap_values = extract_shap_values(gen_shap_df_path, gender_model, x_test_emo_cnn, x_train_emo_cnn)
+    emo_shap_values = extract_shap_values(emo_shap_df_path, emo_model, x_test_emo_cnn, x_train_emo_cnn)
+
+    shap_predictions = np.squeeze(gen_shap_values[1], axis=1)
+    y_data_int = np.argmax(y_test_gen_encoded, axis=1)
+    shap_map = shap_predictions == y_data_int
 
     # Isolating shap values by class.
-    m_shap_list, f_shap_list = get_target_shap(gen_shap_values, x_test_gen_cnn, y_test_gen_encoded)
+    true_gen_shap_values = isolate_true_shap_values(gen_shap_values, y_test_gen_encoded)
+    true_emo_shap_values = isolate_true_shap_values(emo_shap_values, y_test_emo_encoded)
 
     # ------------------------ Analyzing Shap values ------------------------
-    plot_shap_2(m_shap_list, f_shap_list)
-    shap_np_scaled_sorted, shap_sorted_scaled_avg, shap_sorted_indexes = analyse_shap_values(m_shap_list)
-    shap_np_scaled_sorted, shap_sorted_scaled_avg, shap_sorted_indexes = analyse_shap_values(f_shap_list)
+    mean_std_analysis(true_gen_shap_values)
+    mean_std_analysis(true_emo_shap_values)
+
+    # shap_np_scaled_sorted, shap_sorted_scaled_avg, shap_sorted_indexes = analyse_shap_values(m_shap_list)
+    # shap_np_scaled_sorted, shap_sorted_scaled_avg, shap_sorted_indexes = analyse_shap_values(f_shap_list)
 
     # Building obfuscation experiment data
     emo_model_dict = {'model_name': "emotion_model", 'model': emo_model, 'ground_truth': y_test_emo_encoded, 'privacy_target': False}
@@ -80,6 +86,18 @@ def main():
 
     # Plotting results
     plot_obs_f_performance(perf_list)
+
+
+def extract_shap_values(shap_df_path, model, x_target_data, x_background_data):
+    # Extracting SHAP values
+    if not Path(shap_df_path).exists():
+        print("Calculating Shap values")
+        # Generating Shap Values
+        shap_vals, e = extract_shap(model, x_target_data, x_background_data, 1000)
+        np.save(shap_df_path, shap_vals)
+    else:
+        shap_vals = np.load(shap_df_path)
+    return shap_vals
 
 
 def evaluate_obfuscation_function(shap_values, model_list, obf_f_list, x_model_input):
@@ -224,35 +242,10 @@ def plot_obs_f_performance(perf_list):
     tab.auto_set_column_width(col=list(range(len(header))))
     tab.scale(1, 2)
     tab.set_fontsize(10)
-    #
-    # fig.tight_layout()
+
     plt.title('Models ACC overview')
     plt.show()
     plt.clf()
-
-    # # Plotting overview table
-    # fig, ax = plt.subplots()
-    # fig.set_dpi(100)
-    # fig.set_size_inches(9, 10)
-    # # hide axes
-    # fig.patch.set_visible(False)
-    # ax.axis('off')
-    # ax.axis('tight')
-    #
-    # row_header = ['First Value', '25%', '50%', '75%', 'Last']
-    # models_acc_data = np.array(collum_data).transpose()
-    #
-    # tab = table(plt.gca(),
-    #             cellText=models_acc_data,
-    #             rowLabels=row_header,
-    #             colLabels=header,
-    #             loc='center',
-    #             cellLoc='center')
-    #
-    # tab.auto_set_column_width(col=list(range(len(header))))
-    # fig.tight_layout()
-    # plt.show()
-    # plt.clf()
 
 
 def line_plot_metric_data(lbl, metric_data, obf_f_name, title):
@@ -358,22 +351,17 @@ def evaluate_by_class(model, obfuscated_x, y_model_input):
     return by_class_perf
 
 
-def get_target_shap(gen_shap_values, x_gen_test, y_gen_test):
+def isolate_true_shap_values(shap_values, y_data):
+    #This will be equal to the number of classes
+    shap_list = [[] for x in range(len(shap_values))]
+    y_data_int = np.argmax(y_data, axis=1)
 
-    m_shap_list = []
-    f_shap_list = []
-    print("Parsing Shap values. ")
-    for index in tqdm(range(x_gen_test.shape[0])):
-        ismale = y_gen_test[index][0]
+    for index in tqdm(range(y_data.shape[0])):
+        true_class_index = y_data_int[index]
+        shap_values_squeezed = np.squeeze(shap_values[true_class_index][index], axis=1)
+        shap_list[true_class_index].append(shap_values_squeezed)
 
-        # Male
-        if ismale:
-            shap_value = gen_shap_values[0][index]
-            m_shap_list.append(np.squeeze(shap_value, axis=1))
-        else:
-            shap_value = gen_shap_values[1][index]
-            f_shap_list.append(np.squeeze(shap_value, axis=1))
-    return m_shap_list, f_shap_list
+    return shap_list
 
 
 def add_noise(m_shap_sum, x_gen_train, y_gen_train, noise_str):
@@ -429,28 +417,6 @@ def analyse_shap_values(m_shap_list):
     plt.show()
 
     return shap_np_scaled_sorted, shap_sorted_scaled_avg, shap_sorted_indexes
-
-
-def plot_shap_2(m_shap_list, f_shap_list):
-    m_shap_np = np.array(m_shap_list)
-    f_shap_p = np.array(f_shap_list)
-    # temp = replace_outliers_by_std(temp, 3)
-    # m_shap_np = whiten(m_shap_np)
-    summation = np.mean(f_shap_p, axis=0)
-                # - np.mean(m_shap_np, axis=0)
-
-    std = np.std(m_shap_np)
-          # - np.std(f_shap_p)
-    plot_title = "Shap Value Mean (Male mean - Female mean)"
-    shap_nr_features = m_shap_np.shape[1]
-    x_list = ['C{}'.format(x) for x in range(shap_nr_features)]
-    plt.figure(figsize=(25, 10))
-    plt.bar(x_list, summation, yerr=std, ecolor='black', capsize=10)
-    plt.title(plot_title, fontsize=28)
-    plt.xlabel('Coefficient Order (Higher Order captures higher frequencies)', fontsize=22)
-    plt.ylabel('Mel Frequency Cepstrum Coefficient (Mean)', fontsize=22)
-    plt.xticks(fontsize=16)
-    plt.show()
 
 
 def analyse_timeseries_kmeans(m_shap_list):
@@ -527,7 +493,7 @@ def extract_shap(model, shap_input, background_data, background_size):
 
     background = background_data[:background_size]
     e = shap.DeepExplainer(model, background)
-    shap_values = e.shap_values(shap_input, check_additivity=False)
+    shap_values = e.shap_values(shap_input, ranked_outputs=1, output_rank_order='max', check_additivity=False)
     return shap_values, e
 
 

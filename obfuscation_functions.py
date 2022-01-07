@@ -1,15 +1,13 @@
 
 
-# Male index is 0. The value will be 1 if male. Female is index 1.
 def obfuscate_by_class(shap_values, x_input, y_input_test, obf_intensity, **kwargs):
     class_index = kwargs['class_index']
     shap_values[shap_values < 0] = 0
 
     x_obs_input = x_input.copy()
 
-    print("Parsing Shap values. ")
+    print("Parsing Shap values.")
     for index in range(shap_values.shape[1]):
-        # Male index is 0. The value will be 1 if male.
         class_value = y_input_test[index, class_index]
 
         if class_value:
