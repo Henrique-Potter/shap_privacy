@@ -42,21 +42,22 @@ def main():
     gender_model = load_model(gender_model_path)
     emo_model = load_model(emo_model_path)
 
+    gender_nr_classes = len(y_train_gen_encoded[0])
+    emo_nr_classes = len(y_train_emo_encoded[0])
     print("Loading shap values")
-    gen_shap_values = extract_shap_values(gen_shap_df_path, gender_model, x_test_emo_cnn, x_train_emo_cnn)
-    emo_shap_values = extract_shap_values(emo_shap_df_path, emo_model, x_test_emo_cnn, x_train_emo_cnn)
-
-    shap_predictions = np.squeeze(gen_shap_values[1], axis=1)
-    y_data_int = np.argmax(y_test_gen_encoded, axis=1)
-    shap_map = shap_predictions == y_data_int
+    gen_shap_values = extract_shap_values(gen_shap_df_path, gender_model, x_test_emo_cnn, x_train_emo_cnn, gender_nr_classes)
+    emo_shap_values = extract_shap_values(emo_shap_df_path, emo_model, x_test_emo_cnn, x_train_emo_cnn, emo_nr_classes)
 
     # Isolating shap values by class.
-    true_gen_shap_values = isolate_true_shap_values(gen_shap_values, y_test_gen_encoded)
-    true_emo_shap_values = isolate_true_shap_values(emo_shap_values, y_test_emo_encoded)
+    gen_ground_truth_list, gen_correct_shap_list = isolate_true_shap_values(gen_shap_values, y_test_gen_encoded)
+    emo_ground_truth_list, emo_correct_shap_list = isolate_true_shap_values(emo_shap_values, y_test_emo_encoded)
 
     # ------------------------ Analyzing Shap values ------------------------
-    mean_std_analysis(true_gen_shap_values)
-    mean_std_analysis(true_emo_shap_values)
+    mean_std_analysis(gen_ground_truth_list)
+    mean_std_analysis(emo_ground_truth_list)
+
+    # mean_std_analysis(gen_correct_shap_list)
+    # mean_std_analysis(emo_correct_shap_list)
 
     # shap_np_scaled_sorted, shap_sorted_scaled_avg, shap_sorted_indexes = analyse_shap_values(m_shap_list)
     # shap_np_scaled_sorted, shap_sorted_scaled_avg, shap_sorted_indexes = analyse_shap_values(f_shap_list)
@@ -88,15 +89,15 @@ def main():
     plot_obs_f_performance(perf_list)
 
 
-def extract_shap_values(shap_df_path, model, x_target_data, x_background_data):
+def extract_shap_values(shap_df_path, model, x_target_data, x_background_data, nr_classes):
     # Extracting SHAP values
     if not Path(shap_df_path).exists():
         print("Calculating Shap values")
         # Generating Shap Values
-        shap_vals, e = extract_shap(model, x_target_data, x_background_data, 1000)
-        np.save(shap_df_path, shap_vals)
+        shap_vals, e = extract_shap(model, x_target_data, x_background_data, 1000, nr_classes)
+        np.save(shap_df_path, shap_vals, allow_pickle=True)
     else:
-        shap_vals = np.load(shap_df_path)
+        shap_vals = np.load(shap_df_path, allow_pickle=True)
     return shap_vals
 
 
@@ -351,17 +352,30 @@ def evaluate_by_class(model, obfuscated_x, y_model_input):
     return by_class_perf
 
 
-def isolate_true_shap_values(shap_values, y_data):
+def isolate_true_shap_values(shap_data, y_data):
+
+    shap_values = shap_data[0]
+    shap_predictions = shap_data[1]
+
+    shap_predictions = shap_predictions[:, 0]
+    y_data_int = np.argmax(y_data, axis=1)
+    correct_shap_map = shap_predictions == y_data_int
+    misses = np.sum(shap_predictions != y_data_int)
+
     #This will be equal to the number of classes
-    shap_list = [[] for x in range(len(shap_values))]
+    ground_truth_list = [[] for x in range(len(shap_values))]
+    correct_shap_list = [[] for x in range(len(shap_values))]
     y_data_int = np.argmax(y_data, axis=1)
 
     for index in tqdm(range(y_data.shape[0])):
         true_class_index = y_data_int[index]
         shap_values_squeezed = np.squeeze(shap_values[true_class_index][index], axis=1)
-        shap_list[true_class_index].append(shap_values_squeezed)
+        ground_truth_list[true_class_index].append(shap_values_squeezed)
 
-    return shap_list
+        if correct_shap_map[index]:
+            correct_shap_list[true_class_index].append(shap_values_squeezed)
+
+    return ground_truth_list, correct_shap_list
 
 
 def add_noise(m_shap_sum, x_gen_train, y_gen_train, noise_str):
@@ -489,11 +503,11 @@ def plot_shap_values(shap_values, shap_input_np):
     shap.image_plot(tilled_shap_list, tilling)
 
 
-def extract_shap(model, shap_input, background_data, background_size):
+def extract_shap(model, shap_input, background_data, background_size, nr_classes):
 
     background = background_data[:background_size]
     e = shap.DeepExplainer(model, background)
-    shap_values = e.shap_values(shap_input, ranked_outputs=1, output_rank_order='max', check_additivity=False)
+    shap_values = e.shap_values(shap_input, ranked_outputs=nr_classes, output_rank_order='max', check_additivity=False)
     return shap_values, e
 
 
