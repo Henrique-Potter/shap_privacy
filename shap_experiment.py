@@ -45,6 +45,8 @@ def main():
     gender_nr_classes = len(y_train_gen_encoded[0])
     emo_nr_classes = len(y_train_emo_encoded[0])
     print("Loading shap values")
+
+    # When using ranked outputs, the shapeley values are also sorted by rank (e.g., index 0 always has the shapeley of the model prediction)
     gen_shap_values = extract_shap_values(gen_shap_df_path, gender_model, x_test_emo_cnn, x_train_emo_cnn, gender_nr_classes)
     emo_shap_values = extract_shap_values(emo_shap_df_path, emo_model, x_test_emo_cnn, x_train_emo_cnn, emo_nr_classes)
 
@@ -52,9 +54,14 @@ def main():
     gen_ground_truth_list, gen_correct_shap_list = isolate_true_shap_values(gen_shap_values, y_test_gen_encoded)
     emo_ground_truth_list, emo_correct_shap_list = isolate_true_shap_values(emo_shap_values, y_test_emo_encoded)
 
+    for class_data in gen_ground_truth_list:
+        numpy_matrix = np.concatenate(class_data, axis=1)
+
     # ------------------------ Analyzing Shap values ------------------------
     mean_std_analysis(gen_ground_truth_list)
+    mean_std_analysis(gen_correct_shap_list)
     mean_std_analysis(emo_ground_truth_list)
+    mean_std_analysis(emo_correct_shap_list)
 
     # mean_std_analysis(gen_correct_shap_list)
     # mean_std_analysis(emo_correct_shap_list)
@@ -94,7 +101,7 @@ def extract_shap_values(shap_df_path, model, x_target_data, x_background_data, n
     if not Path(shap_df_path).exists():
         print("Calculating Shap values")
         # Generating Shap Values
-        shap_vals, e = extract_shap(model, x_target_data, x_background_data, 1000, nr_classes)
+        shap_vals, e = extract_shap(model, x_target_data, x_background_data, 150, nr_classes)
         np.save(shap_df_path, shap_vals, allow_pickle=True)
     else:
         shap_vals = np.load(shap_df_path, allow_pickle=True)
@@ -368,12 +375,18 @@ def isolate_true_shap_values(shap_data, y_data):
     y_data_int = np.argmax(y_data, axis=1)
 
     for index in tqdm(range(y_data.shape[0])):
-        true_class_index = y_data_int[index]
-        shap_values_squeezed = np.squeeze(shap_values[true_class_index][index], axis=1)
-        ground_truth_list[true_class_index].append(shap_values_squeezed)
+        # Getting the true class number (equivalent to logit id)
+        gt_class_nr = y_data_int[index]
+        # Getting the index position of the ground truth shap values
+        gt_class_shp_index = np.argwhere(shap_data[1][index] == gt_class_nr)[0][0]
+        # Get the actual shapeley value at the gt_class_shp_index postion
+        gt_shp_vals = np.squeeze(shap_values[gt_class_shp_index][index], axis=1)
+        # Append in a list ordered by class number
+        ground_truth_list[gt_class_nr].append(gt_shp_vals)
 
         if correct_shap_map[index]:
-            correct_shap_list[true_class_index].append(shap_values_squeezed)
+            correct_shp_vals = np.squeeze(shap_values[0][index], axis=1)
+            correct_shap_list[gt_class_nr].append(correct_shp_vals)
 
     return ground_truth_list, correct_shap_list
 
@@ -504,10 +517,13 @@ def plot_shap_values(shap_values, shap_input_np):
 
 
 def extract_shap(model, shap_input, background_data, background_size, nr_classes):
+    rank_order = 'max'
+    if nr_classes is None:
+        rank_order = None
 
     background = background_data[:background_size]
     e = shap.DeepExplainer(model, background)
-    shap_values = e.shap_values(shap_input, ranked_outputs=nr_classes, output_rank_order='max', check_additivity=False)
+    shap_values = e.shap_values(shap_input, ranked_outputs=nr_classes, output_rank_order=rank_order, check_additivity=False)
     return shap_values, e
 
 
