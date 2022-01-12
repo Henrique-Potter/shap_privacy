@@ -51,11 +51,19 @@ def main():
     emo_shap_values = extract_shap_values(emo_shap_df_path, emo_model, x_test_emo_cnn, x_train_emo_cnn, emo_nr_classes)
 
     # Isolating shap values by class.
-    gen_ground_truth_list, gen_correct_shap_list = isolate_true_shap_values(gen_shap_values, y_test_gen_encoded)
-    emo_ground_truth_list, emo_correct_shap_list = isolate_true_shap_values(emo_shap_values, y_test_emo_encoded)
+    gen_ground_truth_list, gen_correct_shap_list = parse_shap_values_by_class(gen_shap_values, y_test_gen_encoded)
+    emo_ground_truth_list, emo_correct_shap_list = parse_shap_values_by_class(emo_shap_values, y_test_emo_encoded)
 
-    for class_data in gen_ground_truth_list:
-        numpy_matrix = np.concatenate(class_data, axis=1)
+    # Exporting SHAP to excel
+    model_name = 'gender_model_gt'
+    export_shap_to_csv(gen_ground_truth_list, model_name)
+    model_name = 'gender_model_cr'
+    export_shap_to_csv(gen_correct_shap_list, model_name)
+
+    model_name = 'emo_model_gt'
+    export_shap_to_csv(emo_ground_truth_list, model_name)
+    model_name = 'emo_model_cr'
+    export_shap_to_csv(emo_correct_shap_list, model_name)
 
     # ------------------------ Analyzing Shap values ------------------------
     mean_std_analysis(gen_ground_truth_list)
@@ -94,6 +102,15 @@ def main():
 
     # Plotting results
     plot_obs_f_performance(perf_list)
+
+
+def export_shap_to_csv(gen_ground_truth_list, model_name):
+    class_id = 0
+    for class_data in gen_ground_truth_list:
+        numpy_matrix = np.vstack(class_data)
+        numpy_matrix_df = pd.DataFrame(numpy_matrix)
+        numpy_matrix_df.to_excel("./data/{}_class_{}_shap_values.xlsx".format(model_name, class_id))
+        class_id += 1
 
 
 def extract_shap_values(shap_df_path, model, x_target_data, x_background_data, nr_classes):
@@ -359,7 +376,7 @@ def evaluate_by_class(model, obfuscated_x, y_model_input):
     return by_class_perf
 
 
-def isolate_true_shap_values(shap_data, y_data):
+def parse_shap_values_by_class(shap_data, y_data):
 
     shap_values = shap_data[0]
     shap_predictions = shap_data[1]
