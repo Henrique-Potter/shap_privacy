@@ -13,7 +13,7 @@ from tensorflow.keras.models import load_model
 import matplotlib.pyplot as plt
 from data_processing import pre_process_data
 from obfuscation_functions import *
-from util.custom_functions import replace_outliers_by_std, mean_std_analysis
+from util.custom_functions import replace_outliers_by_std, mean_std_analysis, replace_outliers_by_quartile
 
 print("Num GPUs Available: ", len(tf.config.list_physical_devices('GPU')))
 
@@ -98,7 +98,7 @@ def main():
     time.time()
 
     # Evaluating obfuscation functions
-    perf_list = evaluate_obfuscation_function(gen_shap_values, model_list, obfuscation_f_list, x_test_gen_cnn)
+    perf_list = evaluate_obfuscation_function(gen_correct_shap_list, model_list, obfuscation_f_list, x_test_gen_cnn)
 
     # Plotting results
     plot_obs_f_performance(perf_list)
@@ -107,8 +107,7 @@ def main():
 def export_shap_to_csv(gen_ground_truth_list, model_name):
     class_id = 0
     for class_data in gen_ground_truth_list:
-        numpy_matrix = np.vstack(class_data)
-        numpy_matrix_df = pd.DataFrame(numpy_matrix)
+        numpy_matrix_df = pd.DataFrame(class_data)
         numpy_matrix_df.to_excel("./data/{}_class_{}_shap_values.xlsx".format(model_name, class_id))
         class_id += 1
 
@@ -387,11 +386,11 @@ def parse_shap_values_by_class(shap_data, y_data):
     misses = np.sum(shap_predictions != y_data_int)
 
     #This will be equal to the number of classes
-    ground_truth_list = [[] for x in range(len(shap_values))]
+    gt_shap_list = [[] for x in range(len(shap_values))]
     correct_shap_list = [[] for x in range(len(shap_values))]
     y_data_int = np.argmax(y_data, axis=1)
 
-    for index in tqdm(range(y_data.shape[0])):
+    for index in range(y_data.shape[0]):
         # Getting the true class number (equivalent to logit id)
         gt_class_nr = y_data_int[index]
         # Getting the index position of the ground truth shap values
@@ -399,13 +398,27 @@ def parse_shap_values_by_class(shap_data, y_data):
         # Get the actual shapeley value at the gt_class_shp_index postion
         gt_shp_vals = np.squeeze(shap_values[gt_class_shp_index][index], axis=1)
         # Append in a list ordered by class number
-        ground_truth_list[gt_class_nr].append(gt_shp_vals)
+        gt_shap_list[gt_class_nr].append(gt_shp_vals)
 
         if correct_shap_map[index]:
             correct_shp_vals = np.squeeze(shap_values[0][index], axis=1)
             correct_shap_list[gt_class_nr].append(correct_shp_vals)
 
-    return ground_truth_list, correct_shap_list
+    processed_gt_matrix_list = clean_outliers(gt_shap_list)
+    processed_cr_matrix_list = clean_outliers(correct_shap_list)
+
+    return processed_gt_matrix_list, processed_cr_matrix_list
+
+
+def clean_outliers(gt_shap_list):
+
+    cleared_class_matrix_list = []
+    for class_data in gt_shap_list:
+        class_data_matrix = np.vstack(class_data)
+        class_data_matrix = replace_outliers_by_quartile(class_data_matrix)
+        cleared_class_matrix_list.append(class_data_matrix)
+
+    return cleared_class_matrix_list
 
 
 def add_noise(m_shap_sum, x_gen_train, y_gen_train, noise_str):

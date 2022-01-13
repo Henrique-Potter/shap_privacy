@@ -69,6 +69,22 @@ def replace_outliers_by_std(data, m=3.):
     return data2
 
 
+def replace_outliers_by_quartile(data, m=1.5):
+
+    q1 = np.quantile(data, 0.25, axis=0)
+    q3 = np.quantile(data, 0.75, axis=0)
+
+    inter_quantile_range = q3 - q1
+
+    upper_range = m * inter_quantile_range + q3
+    lower_range = q1 - m * inter_quantile_range
+
+    data1 = np.where(data > upper_range, upper_range, data)
+    data2 = np.where(data1 < lower_range, lower_range, data1)
+
+    return data2
+
+
 def show_spectrogram(file):
     sr, x = scipy.io.wavfile.read(file)
     ## Parameters: 10ms step, 30ms window
