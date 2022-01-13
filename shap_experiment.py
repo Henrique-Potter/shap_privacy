@@ -60,7 +60,7 @@ def main():
     model_name = 'gender_model_cr'
     export_shap_to_csv(gen_correct_shap_list, model_name)
 
-    model_name = 'emo_model_gt'
+    model_name = 'emo_mo del_gt'
     export_shap_to_csv(emo_ground_truth_list, model_name)
     model_name = 'emo_model_cr'
     export_shap_to_csv(emo_correct_shap_list, model_name)
@@ -98,7 +98,7 @@ def main():
     time.time()
 
     # Evaluating obfuscation functions
-    perf_list = evaluate_obfuscation_function(gen_correct_shap_list, model_list, obfuscation_f_list, x_test_gen_cnn)
+    perf_list = evaluate_obfuscation_function(gen_correct_shap_list, emo_correct_shap_list, model_list, obfuscation_f_list, x_test_gen_cnn)
 
     # Plotting results
     plot_obs_f_performance(perf_list)
@@ -124,7 +124,7 @@ def extract_shap_values(shap_df_path, model, x_target_data, x_background_data, n
     return shap_vals
 
 
-def evaluate_obfuscation_function(shap_values, model_list, obf_f_list, x_model_input):
+def evaluate_obfuscation_function(priv_shap_data, util_shap_data, model_list, obf_f_list, x_model_input):
     model_perf_list = []
 
     target_mdl = None
@@ -159,7 +159,7 @@ def evaluate_obfuscation_function(shap_values, model_list, obf_f_list, x_model_i
             for obf_intensity in tqdm(obf_f_str_list):
                 # Obfuscating only males index class is 0
                 # Applying Obfuscation Function
-                obfuscated_x = obf_f(shap_values, x_model_input, target_mdl['ground_truth'], obf_intensity, **kwargs)
+                obfuscated_x = obf_f(priv_shap_data, util_shap_data, x_model_input, target_mdl['ground_truth'], obf_intensity, **kwargs)
                 # --- Collecting Metrics ----
                 obfuscated_perf = model.evaluate(obfuscated_x, y_model_input)
                 obfuscated_model_perf_loss.append(obfuscated_perf[0])

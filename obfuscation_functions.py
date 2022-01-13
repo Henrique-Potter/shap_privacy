@@ -1,17 +1,22 @@
 
 
-def obfuscate_by_class(shap_values, x_input, y_input_test, obf_intensity, **kwargs):
+def obfuscate_by_class(priv_shap_data, util_shap_data, x_input, y_input_test, obf_intensity, **kwargs):
+    import numpy as np
+
     class_index = kwargs['class_index']
-    shap_values[shap_values < 0] = 0
+    priv_class_shap = priv_shap_data[class_index]
+    negative_shap_mask = priv_class_shap < 0
+    priv_class_shap[negative_shap_mask] = 0
 
     x_obs_input = x_input.copy()
 
     print("Parsing Shap values.")
-    for index in range(shap_values.shape[1]):
+    for index in range(x_input.shape[0]):
+        # This indexing is expected to match priv_shap data order.
         class_value = y_input_test[index, class_index]
 
         if class_value:
-            x_shap_values = shap_values[class_index][index]
+            x_shap_values = priv_class_shap[index]
             x_target = x_obs_input[index, :, 0]
             obs_x = norm_noise(x_shap_values, x_target, obf_intensity)
             x_obs_input[index, :, 0] = obs_x
@@ -19,7 +24,7 @@ def obfuscate_by_class(shap_values, x_input, y_input_test, obf_intensity, **kwar
     return x_obs_input
 
 
-def obfuscate_by_class(shap_values, x_input, y_input_test, obf_intensity, **kwargs):
+def obfuscate_only_by_top_k(priv_shap_data, util_shap_data, x_input, y_input_test, obf_intensity, **kwargs):
     class_index = kwargs['class_index']
     shap_values[shap_values < 0] = 0
 
