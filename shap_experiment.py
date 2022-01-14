@@ -55,21 +55,21 @@ def main():
     emo_ground_truth_list, emo_correct_shap_list = parse_shap_values_by_class(emo_shap_values, y_test_emo_encoded)
 
     # Exporting SHAP to excel
-    # model_name = 'gender_model_gt'
-    # export_shap_to_csv(gen_ground_truth_list, model_name)
-    # model_name = 'gender_model_cr'
-    # export_shap_to_csv(gen_correct_shap_list, model_name)
-    #
-    # model_name = 'emo_mo del_gt'
-    # export_shap_to_csv(emo_ground_truth_list, model_name)
-    # model_name = 'emo_model_cr'
-    # export_shap_to_csv(emo_correct_shap_list, model_name)
+    model_name = 'gender_model_gt'
+    export_shap_to_csv(gen_ground_truth_list, model_name)
+    model_name = 'gender_model_cr'
+    export_shap_to_csv(gen_correct_shap_list, model_name)
+
+    model_name = 'emo_mo del_gt'
+    export_shap_to_csv(emo_ground_truth_list, model_name)
+    model_name = 'emo_model_cr'
+    export_shap_to_csv(emo_correct_shap_list, model_name)
 
     # ------------------------ Analyzing Shap values ------------------------
-    # mean_std_analysis(gen_ground_truth_list)
-    # mean_std_analysis(gen_correct_shap_list)
-    # mean_std_analysis(emo_ground_truth_list)
-    # mean_std_analysis(emo_correct_shap_list)
+    mean_std_analysis(gen_ground_truth_list)
+    mean_std_analysis(gen_correct_shap_list)
+    mean_std_analysis(emo_ground_truth_list)
+    mean_std_analysis(emo_correct_shap_list)
 
     # mean_std_analysis(gen_correct_shap_list)
     # mean_std_analysis(emo_correct_shap_list)
