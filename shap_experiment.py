@@ -55,21 +55,21 @@ def main():
     emo_ground_truth_list, emo_correct_shap_list = parse_shap_values_by_class(emo_shap_values, y_test_emo_encoded)
 
     # Exporting SHAP to excel
-    model_name = 'gender_model_gt'
-    export_shap_to_csv(gen_ground_truth_list, model_name)
-    model_name = 'gender_model_cr'
-    export_shap_to_csv(gen_correct_shap_list, model_name)
-
-    model_name = 'emo_mo del_gt'
-    export_shap_to_csv(emo_ground_truth_list, model_name)
-    model_name = 'emo_model_cr'
-    export_shap_to_csv(emo_correct_shap_list, model_name)
+    # model_name = 'gender_model_gt'
+    # export_shap_to_csv(gen_ground_truth_list, model_name)
+    # model_name = 'gender_model_cr'
+    # export_shap_to_csv(gen_correct_shap_list, model_name)
+    #
+    # model_name = 'emo_mo del_gt'
+    # export_shap_to_csv(emo_ground_truth_list, model_name)
+    # model_name = 'emo_model_cr'
+    # export_shap_to_csv(emo_correct_shap_list, model_name)
 
     # ------------------------ Analyzing Shap values ------------------------
-    mean_std_analysis(gen_ground_truth_list)
-    mean_std_analysis(gen_correct_shap_list)
-    mean_std_analysis(emo_ground_truth_list)
-    mean_std_analysis(emo_correct_shap_list)
+    # mean_std_analysis(gen_ground_truth_list)
+    # mean_std_analysis(gen_correct_shap_list)
+    # mean_std_analysis(emo_ground_truth_list)
+    # mean_std_analysis(emo_correct_shap_list)
 
     # mean_std_analysis(gen_correct_shap_list)
     # mean_std_analysis(emo_correct_shap_list)
@@ -85,20 +85,35 @@ def main():
 
     # Building Obfuscation list functions
     # Noise intensity List
-    norm_noise_list = [x/10 for x in range(1, 500, 10)]
+    norm_noise_list = [x/10 for x in range(1, 500, 3)]
     obfuscation_f_list = []
-    obf_by_male_gender = {'obf_f_handler': obfuscate_by_class, 'intensities': norm_noise_list, 'kwargs': {'class_index':0}, 'label':'obf_male'}
-    obf_by_female_gender = {'obf_f_handler': obfuscate_by_class, 'intensities': norm_noise_list, 'kwargs': {'class_index':1}, 'label':'obf_female'}
-    obfuscation_f_list.append(obf_by_male_gender)
-    obfuscation_f_list.append(obf_by_female_gender)
+    # obf_by_male_gender = {'obf_f_handler': obfuscate_by_class, 'intensities': norm_noise_list, 'kwargs': {'class_index':0}, 'label':'obf_male'}
+    # obf_by_female_gender = {'obf_f_handler': obfuscate_by_class, 'intensities': norm_noise_list, 'kwargs': {'class_index':1}, 'label':'obf_female'}
+    # obfuscation_f_list.append(obf_by_male_gender)
+    # obfuscation_f_list.append(obf_by_female_gender)
+
+    obf_by_topk_male = {'obf_f_handler': obfuscate_by_topk_class,
+                        'intensities': norm_noise_list,
+                        'kwargs': {'class_index': 0, 'k': 3},
+                        'label': 'obf_topk_3_male'}
+
+    obf_by_topk_female = {'obf_f_handler': obfuscate_by_topk_class,
+                          'intensities': norm_noise_list,
+                          'kwargs': {'class_index': 1, 'k': 3},
+                          'label': 'obf_topk_3_female'}
+
+    obfuscation_f_list.append(obf_by_topk_male)
+    obfuscation_f_list.append(obf_by_topk_female)
 
     # Sanity check model performance check
     evaluate_model(model_list, x_test_emo_cnn)
+    # Sanity check model performance check
+    evaluate_model(model_list, x_test_gen_cnn)
 
     time.time()
 
     # Evaluating obfuscation functions
-    perf_list = evaluate_obfuscation_function(gen_correct_shap_list, emo_correct_shap_list, model_list, obfuscation_f_list, x_test_gen_cnn)
+    perf_list = evaluate_obfuscation_function(gen_ground_truth_list, emo_ground_truth_list, model_list, obfuscation_f_list, x_test_gen_cnn)
 
     # Plotting results
     plot_obs_f_performance(perf_list)
@@ -157,14 +172,28 @@ def evaluate_obfuscation_function(priv_shap_data, util_shap_data, model_list, ob
             metrics_perf_list = []
 
             for obf_intensity in tqdm(obf_f_str_list):
+
+                local_priv_shap_data = copy_numpy_matrix_list(priv_shap_data)
+                local_util_shap_data = copy_numpy_matrix_list(util_shap_data)
+
+                # local_priv_shap_data = priv_shap_data.copy()
+                # # local_util_shap_data = util_shap_data.copy()
+                local_xmodel = x_model_input.copy()
+
                 # Obfuscating only males index class is 0
                 # Applying Obfuscation Function
-                obfuscated_x = obf_f(priv_shap_data, util_shap_data, x_model_input, target_mdl['ground_truth'], obf_intensity, **kwargs)
+                obfuscated_x = obf_f(local_priv_shap_data,
+                                     local_util_shap_data,
+                                     local_xmodel,
+                                     target_mdl['ground_truth'],
+                                     obf_intensity,
+                                     **kwargs)
+
                 # --- Collecting Metrics ----
                 obfuscated_perf = model.evaluate(obfuscated_x, y_model_input)
                 obfuscated_model_perf_loss.append(obfuscated_perf[0])
                 obfuscated_model_perf_acc.append(obfuscated_perf[1])
-                # By class evaluation
+                # --- By class evaluation ---
                 by_class_perf = evaluate_by_class(model, obfuscated_x, y_model_input)
                 obfuscated_model_by_cls_perf.append(by_class_perf)
 
@@ -179,6 +208,14 @@ def evaluate_obfuscation_function(priv_shap_data, util_shap_data, model_list, ob
         tf.keras.backend.clear_session()
 
     return model_perf_list
+
+
+def copy_numpy_matrix_list(shap_data):
+    local_list = []
+    for shap_class_data in shap_data:
+        local_shap_class = shap_class_data.copy()
+        local_list.append(local_shap_class)
+    return local_list
 
 
 def parse_per_class_perf_data(by_class_perf_data):
@@ -234,13 +271,14 @@ def plot_obs_f_performance(perf_list):
                 lbl = "{} mdl w/ {}".format(model_name, obf_f_name)
 
                 if metric_name == "loss":
+                    continue
                     line_plot_metric_data(lbl, metric_data, obf_f_name, title)
 
                 elif metric_name == "acc":
                     header.append(lbl)
                     first, half, last, one_quarter, three_quarters = get_data_samples(metric_data)
                     collum_data.append([first, one_quarter, half, three_quarters, last])
-
+                    continue
                     line_plot_metric_data(lbl, metric_data, obf_f_name, title)
 
                 elif metric_name == "by_class":
