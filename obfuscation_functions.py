@@ -31,7 +31,7 @@ def obfuscate_by_topk_class(priv_shap_data, util_shap_data, x_input, priv_target
     util_target_y_input = util_target_mdl['ground_truth']
     util_nr_classes = len(util_target_y_input[0])
 
-    class_index = kwargs['class_index']
+    class_index = priv_target_mdl['priv_class']
     force_y_match = kwargs['force_y_match']
     utility_prot_mode = kwargs['protec_util']
     # top k features to privatize
@@ -65,25 +65,25 @@ def obfuscate_by_topk_class(priv_shap_data, util_shap_data, x_input, priv_target
             priv_shap_sorted_indexes = np.argsort(priv_shap_row)
             if k > 0:
                 # Get the Top K is positive
-                priv_topk_shaps = priv_shap_sorted_indexes[-k:]
-                util_topk_shaps = util_shap_sorted_indexes[-p:]
+                priv_topk_shaps_idx = priv_shap_sorted_indexes[-k:]
+                util_topk_shaps_idx = util_shap_sorted_indexes[-p:]
 
             else:
                 # Get the Bottom K if negative
-                priv_topk_shaps = priv_shap_sorted_indexes[:-k]
-                util_topk_shaps = util_shap_sorted_indexes[:-p]
+                priv_topk_shaps_idx = priv_shap_sorted_indexes[:-k]
+                util_topk_shaps_idx = util_shap_sorted_indexes[:-p]
 
-            if utility_prot_mode == 1:
-                util_topk_shaps = np.flip(util_topk_shaps)
-                for shap_val in util_topk_shaps:
-                    shap_map = priv_topk_shaps == shap_val
+            if utility_prot_mode == 1 and p > 0:
+                util_topk_shaps_idx = np.flip(util_topk_shaps_idx)
+                for shap_val in util_topk_shaps_idx:
+                    shap_map = priv_topk_shaps_idx == shap_val
                     if np.any(shap_map):
                         shap_map = shap_map == False
-                        priv_topk_shaps = priv_topk_shaps[shap_map]
+                        priv_topk_shaps_idx = priv_topk_shaps_idx[shap_map]
 
             # Creating mask for the non top k
             mask_array = np.ones(nr_features, dtype=int)
-            mask_array[priv_topk_shaps] = 0
+            mask_array[priv_topk_shaps_idx] = 0
             mask_array = mask_array.astype(bool)
             # Setting only the non top k to 0. Creating a Top k shap where all other values are 0.
             priv_shap_row[mask_array] = 0

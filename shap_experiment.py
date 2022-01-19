@@ -10,8 +10,9 @@ from tqdm import tqdm
 from tensorflow.keras.models import load_model
 import matplotlib.pyplot as plt
 from data_processing import pre_process_data
-from obfuscation_functions import *
-from util.custom_functions import replace_outliers_by_std, replace_outliers_by_quartile
+from experiment_config import set_experiment_config
+from util.custom_functions import replace_outliers_by_std, replace_outliers_by_quartile, mean_std_analysis, \
+    calc_confusion_matrix
 
 print("Num GPUs Available: ", len(tf.config.list_physical_devices('GPU')))
 
@@ -49,76 +50,54 @@ def main():
     emo_shap_values = extract_shap_values(emo_shap_df_path, emo_model, x_test_emo_cnn, x_train_emo_cnn, emo_nr_classes)
 
     # Isolating shap values by class.
-    gen_ground_truth_list, gen_correct_shap_list = parse_shap_values_by_class(gen_shap_values, y_test_gen_encoded)
-    emo_ground_truth_list, emo_correct_shap_list = parse_shap_values_by_class(emo_shap_values, y_test_emo_encoded)
+    gen_gt_shap_list, gen_corr_shap_list = parse_shap_values_by_class(gen_shap_values, y_test_gen_encoded)
+    emo_gt_shap_list, emo_corr_shap_list = parse_shap_values_by_class(emo_shap_values, y_test_emo_encoded)
 
     # # Exporting SHAP to excel
     # model_name = 'gender_model_gt'
-    # export_shap_to_csv(gen_ground_truth_list, model_name)
+    # export_shap_to_csv(gen_gt_shap_list, model_name)
     # model_name = 'gender_model_cr'
-    # export_shap_to_csv(gen_correct_shap_list, model_name)
+    # export_shap_to_csv(gen_corr_shap_list, model_name)
     #
     # model_name = 'emo_mo del_gt'
-    # export_shap_to_csv(emo_ground_truth_list, model_name)
+    # export_shap_to_csv(emo_gt_shap_list, model_name)
     # model_name = 'emo_model_cr'
-    # export_shap_to_csv(emo_correct_shap_list, model_name)
+    # export_shap_to_csv(emo_corr_shap_list, model_name)
     #
     # # ------------------------ Analyzing Shap values ------------------------
-    # mean_std_analysis(gen_ground_truth_list)
-    # mean_std_analysis(gen_correct_shap_list)
-    # mean_std_analysis(emo_ground_truth_list)
-    # mean_std_analysis(emo_correct_shap_list)
+    # mean_std_analysis(gen_gt_shap_list)
+    # mean_std_analysis(gen_corr_shap_list)
+    # mean_std_analysis(emo_gt_shap_list)
+    # mean_std_analysis(emo_corr_shap_list)
 
-    # mean_std_analysis(gen_correct_shap_list)
-    # mean_std_analysis(emo_correct_shap_list)
+    # mean_std_analysis(gen_corr_shap_list)
+    # mean_std_analysis(emo_corr_shap_list)
 
     # shap_np_scaled_sorted, shap_sorted_scaled_avg, shap_sorted_indexes = analyse_shap_values(m_shap_list)
     # shap_np_scaled_sorted, shap_sorted_scaled_avg, shap_sorted_indexes = analyse_shap_values(f_shap_list)
 
     # Building obfuscation experiment data
-    emo_model_dict = {'model_name': "emotion_model",
-                      'model': emo_model, 'ground_truth': y_test_emo_encoded,
-                      'privacy_target': False,
-                      'utility_target': True}
-    gen_model_dict = {'model_name': "gen_model",
-                      'model': gender_model, 'ground_truth': y_test_gen_encoded,
-                      'privacy_target': True,
-                      'utility_target': False}
+    model_list, obfuscation_f_list = set_experiment_config(emo_model,
+                                                           gender_model,
+                                                           emo_gt_shap_list,
+                                                           gen_gt_shap_list,
+                                                           y_test_emo_encoded,
+                                                           y_test_gen_encoded)
 
-    model_list = [emo_model_dict, gen_model_dict]
+    # # Sanity check model performance check
+    # evaluate_model(model_list, x_test_emo_cnn)
+    # # Sanity check model performance check
+    # evaluate_model(model_list, x_test_gen_cnn)
 
-    # Building Obfuscation list functions
-    # Noise intensity List
-    norm_noise_list = [1+x/100 for x in range(10, 100, 3)]
-    obfuscation_f_list = []
-    # obf_by_male_gender = {'obf_f_handler': obfuscate_by_class, 'intensities': norm_noise_list, 'kwargs': {'class_index':0}, 'label':'obf_male'}
-    # obf_by_female_gender = {'obf_f_handler': obfuscate_by_class, 'intensities': norm_noise_list, 'kwargs': {'class_index':1}, 'label':'obf_female'}
-    # obfuscation_f_list.append(obf_by_male_gender)
-    # obfuscation_f_list.append(obf_by_female_gender)
-
-    obf_by_topk_male = {'obf_f_handler': obfuscate_by_topk_class,
-                        'intensities': norm_noise_list,
-                        'kwargs': {'class_index': 0, 'k': 15, 'force_y_match': 1, 'avg_reps': 10, 'protec_util': 1, 'p':30},
-                        'label': 'obf_totk_3_male'}
-
-    obf_by_topk_female = {'obf_f_handler': obfuscate_by_topk_class,
-                          'intensities': norm_noise_list,
-                          'kwargs': {'class_index': 1, 'k': 15, 'force_y_match': 1, 'avg_reps': 10, 'protec_util': 1, 'p':30},
-                          'label': 'obf_totk_3_female'}
-
-    obfuscation_f_list.append(obf_by_topk_male)
-    obfuscation_f_list.append(obf_by_topk_female)
-
-    # Sanity check model performance check
-    evaluate_model(model_list, x_test_emo_cnn)
-    # Sanity check model performance check
-    evaluate_model(model_list, x_test_gen_cnn)
+    general_mask_evaluation(model_list, x_test_gen_cnn)
 
     # Evaluating obfuscation functions
-    perf_list = evaluate_obfuscation_function(gen_ground_truth_list, emo_ground_truth_list, model_list, obfuscation_f_list, x_test_gen_cnn)
+    # perf_list = evaluate_obfuscation_function(model_list,
+    #                                           obfuscation_f_list,
+    #                                           x_test_gen_cnn)
 
     # Plotting results
-    plot_obs_f_performance(perf_list)
+    # plot_obs_f_performance(perf_list)
 
 
 def export_shap_to_csv(gen_ground_truth_list, model_name):
@@ -141,7 +120,7 @@ def extract_shap_values(shap_df_path, model, x_target_data, x_background_data, n
     return shap_vals
 
 
-def evaluate_obfuscation_function(priv_shap_data, util_shap_data, model_list, obf_f_list, x_model_input):
+def evaluate_obfuscation_function(model_list, obf_f_list, x_model_input):
     model_perf_list = []
 
     priv_target_mdl = None
@@ -155,16 +134,11 @@ def evaluate_obfuscation_function(priv_shap_data, util_shap_data, model_list, ob
 
     for model_dict in model_list:
         model_name = model_dict['model_name']
-        model = model_dict['model']
-        eval_y_input = model_dict['ground_truth']
-        privacy_target = model_dict['privacy_target']
 
         obf_f_perf_list = []
         for obf_f_dict in obf_f_list:
 
-            obf_f = obf_f_dict['obf_f_handler']
             obf_f_str_list = obf_f_dict['intensities']
-            obf_kwargs = obf_f_dict['kwargs']
 
             # Function Name
             obf_f_name = obf_f_dict['label']
@@ -178,9 +152,12 @@ def evaluate_obfuscation_function(priv_shap_data, util_shap_data, model_list, ob
 
             for obf_intensity in tqdm(obf_f_str_list):
 
-                overall_perf, by_class_perf = obfuscate_and_evaluate(model_name, eval_y_input, obf_kwargs, model, obf_f,
-                                                                     obf_intensity, priv_shap_data, priv_target_mdl,
-                                                                     util_target_mdl, util_shap_data, x_model_input)
+                overall_perf, by_class_perf = obfuscate_and_evaluate(model_dict,
+                                                                     obf_f_dict,
+                                                                     obf_intensity,
+                                                                     priv_target_mdl,
+                                                                     util_target_mdl,
+                                                                     x_model_input)
 
                 # --- Collecting Metrics ----
                 obfuscated_model_perf_loss.append(overall_perf[0])
@@ -200,19 +177,35 @@ def evaluate_obfuscation_function(priv_shap_data, util_shap_data, model_list, ob
     return model_perf_list
 
 
-def obfuscate_and_evaluate(model_name, eval_y_input, kwargs, model, obf_f, obf_intensity, priv_shap_data,
-                           priv_target_mdl, util_target_mdl, util_shap_data, x_model_input):
+def obfuscate_and_evaluate(model_dict,
+                           obf_f_dict,
+                           obf_intensity,
+                           priv_target_mdl,
+                           util_target_mdl,
+                           x_model_input):
+
+    model = model_dict['model']
+    curr_y_labels = model_dict['ground_truth']
+    curr_model_name = model_dict['model_name']
+
+    obf_f = obf_f_dict['obf_f_handler']
+    kwargs = obf_f_dict['kwargs']
+
     model_perf_list = []
     per_class_model_perf_list = []
-    obf_function_name = obf_f.__name__
+    obf_function_name = obf_f_dict['label']
     avg_reps = kwargs['avg_reps']
+
+    priv_shap_data = priv_target_mdl['shap_values']
+    util_shap_data = util_target_mdl['shap_values']
+
     for i in range(avg_reps):
 
         local_priv_shap_data = copy_numpy_matrix_list(priv_shap_data)
         local_util_shap_data = copy_numpy_matrix_list(util_shap_data)
 
         local_x_data = x_model_input.copy()
-        local_y_data = eval_y_input.copy()
+        local_y_data = curr_y_labels.copy()
 
         # Applying Obfuscation Function
         # y_match returns x->y labels in case x was changed
@@ -224,6 +217,7 @@ def obfuscate_and_evaluate(model_name, eval_y_input, kwargs, model, obf_f, obf_i
                                       local_y_data,
                                       obf_intensity,
                                       **kwargs)
+
         # Evaluating models performance with obfuscated data
         obfuscated_perf = model.evaluate(obfuscated_x, y_match, verbose=0)
         # --- By class evaluation ---
@@ -237,7 +231,7 @@ def obfuscate_and_evaluate(model_name, eval_y_input, kwargs, model, obf_f, obf_i
 
     status_text = "Overall performance for model {} with obfuscation function {} and noise level at {}:"
     print("\n")
-    print(status_text.format(model_name, obf_function_name, obf_intensity))
+    print(status_text.format(curr_model_name, obf_function_name, obf_intensity))
     print(overall_perf_avg)
     print("\n")
 
@@ -308,6 +302,80 @@ def evaluate_model(model_list, x_test):
         print("{} Model Test perf is:{}".format(model_name, test_perf))
 
 
+def general_mask_evaluation(model_list, x_test):
+
+    mask_features_pos = [11, 12, 13, 14, 15, 18, 22, 23, 25, 31, 34, 38, 39, 35, 20, 19]
+    mask_features_neg = [1, 5, 6, 16, 20, 24, 29, 33]
+
+    modulation_levels = [x/10 for x in range(0, 40, 1)]
+
+    gen_model_perf = []
+    gen_model_by_class_perf = []
+    emo_model_perf = []
+    emo_model_by_class_perf = []
+
+    print("------------------ Simple evaluation Start------------------")
+    for removal in modulation_levels:
+        mask_array = np.ones(40, dtype=float)
+        mask_array[mask_features_neg] = removal
+        x_input = x_test.copy()
+        # mask_array = mask_array.astype(bool)
+        # Setting only the non top k to 0. Creating a Top k shap where all other values are 0.
+        x_input[:, :, 0] = x_input[:, :, 0] * mask_array
+        index = 0
+
+        for model_dict in model_list:
+            model_name = model_dict['model_name']
+            model = model_dict['model']
+            y_model_input = model_dict['ground_truth']
+
+            test_perf = model.evaluate(x_input, y_model_input, verbose=0)
+            by_class_perf = evaluate_by_class(model, x_input, y_model_input)
+
+            #calc_confusion_matrix(model, x_input, y_model_input, removal)
+
+            if len(y_model_input[0]) == 7:
+                emo_model_perf.append(test_perf)
+                gen_model_by_class_perf.append(by_class_perf)
+            else:
+                gen_model_perf.append(test_perf)
+                emo_model_by_class_perf.append(by_class_perf)
+            print("{} Model Test perf is:{}".format(model_name, test_perf))
+
+    fig = plt.figure()
+    fig.set_size_inches(17, 10)
+    fig.set_dpi(100)
+
+    eacc = np.vstack(emo_model_perf)[:, 1]
+    gacc = np.vstack(gen_model_perf)[:, 1]
+
+    x_list = [x for x in range(len(modulation_levels))]
+    plt.plot(x_list, eacc, label='Emo model ACC')
+    plt.plot(x_list, gacc, label='Gen model ACC')
+
+    gclass_perf_list = parse_perf_class(gen_model_by_class_perf)
+
+    for class_data_idx in range(len(gclass_perf_list)):
+        plt.plot(x_list, gclass_perf_list[class_data_idx], label='{} ACC'.format('Gen Model class {}'.format(class_data_idx)))
+
+    plt.title("General mask for {} features".format(mask_features_neg))
+    plt.ylabel('ACC')
+    plt.xlabel('Modulation multiplier')
+    plt.legend()
+    plt.xticks(x_list, modulation_levels)
+    plt.show()
+
+    print("------------------ Simple evaluation END ------------------")
+
+
+def parse_perf_class(gen_model_by_class_perf):
+    class_perf_list = [[] for x in range(len(gen_model_by_class_perf[0]))]
+    for classes_perf in gen_model_by_class_perf:
+        for class_perf_idx in range(len(classes_perf)):
+            class_perf_list[class_perf_idx].append(classes_perf[class_perf_idx])
+    return class_perf_list
+
+
 # Plots performance data for N number of models with N number of obfuscation functions
 def plot_obs_f_performance(perf_list):
     plt.clf()
@@ -373,6 +441,7 @@ def plot_obs_f_performance(perf_list):
 
 
 def line_plot_metric_data(lbl, metric_data, obf_f_name, title):
+
     nr_intensity_levels = len(metric_data)
     x_list = [x for x in range(0, nr_intensity_levels)]
     fig = plt.figure()
@@ -471,11 +540,10 @@ def evaluate_by_class(model, obfuscated_x, y_model_input):
         single_class_map = y_model_input[:, cls_index] == 1
         if np.sum(single_class_map) == 0:
             break
-
         obfuscated_x_single_class = obfuscated_x[single_class_map]
         y_model_input_single_class = y_model_input[single_class_map]
         obfuscated_single_class_perf = model.evaluate(obfuscated_x_single_class, y_model_input_single_class, verbose=0)
-        by_class_perf.append((cls_index, obfuscated_single_class_perf))
+        by_class_perf.append(obfuscated_single_class_perf)
 
     return by_class_perf
 

@@ -30,6 +30,42 @@ def spectrogram_image(y, sr, out, hop_length, n_mels):
     skimage.io.imsave(out, img)
 
 
+def plot_confusion_matrix(cm_values, model_id, removal_level):
+    import matplotlib.pyplot as plt
+    import seaborn as sn
+    import pandas as pd
+    cm_df = pd.DataFrame(cm_values)
+    plt.figure(figsize=(10, 7))
+    plt.title("Confusion Matrix removal_level {}".format(removal_level))
+
+    if model_id == 0:
+        axis_labels = ['Anger', 'Disgust', 'Fear', 'Happy', 'Neutral', 'Sad', 'Surprised']
+    else:
+        axis_labels = ['Male', 'Female']
+
+    s = sn.heatmap(cm_df, xticklabels=axis_labels, yticklabels=axis_labels, annot=True)
+    s.set(xlabel='Predicted', ylabel='Actual')
+    plt.show()
+
+
+def calc_confusion_matrix(model, x_test, y_test, removal_level):
+    from sklearn.metrics import confusion_matrix
+
+    y_predict = np.asarray(model.predict(x_test))
+
+    true = np.argmax(y_test, axis=1)
+    pred = np.argmax(y_predict, axis=1)
+
+    cm = confusion_matrix(true, pred)
+
+    cm = cm.astype('float') / cm.sum(axis=1)[:, np.newaxis]
+    cm = np.round(cm, 2)
+
+    model_id = 0 if len(y_test[0]) == 7 else 1
+
+    plot_confusion_matrix(cm, model_id, removal_level)
+
+
 def train_model(model, model_path, batch, epoch, x_traincnn, y_train, x_testcnn, y_test, get_emotion_label):
     cl_backs = [PlotLosses(model_path, get_emotion_label), PerClassMetrics(model, (x_testcnn, y_test), 64)]
     cnnhistory = model.fit(x_traincnn, y_train, batch_size=batch, epochs=epoch, validation_data=(x_testcnn, y_test), callbacks=cl_backs)
