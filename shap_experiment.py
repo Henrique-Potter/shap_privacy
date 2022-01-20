@@ -11,6 +11,7 @@ from tensorflow.keras.models import load_model
 import matplotlib.pyplot as plt
 from data_processing import pre_process_data
 from experiment_config import set_experiment_config
+from obfuscation_functions import general_by_class_mask
 from util.custom_functions import replace_outliers_by_std, replace_outliers_by_quartile, mean_std_analysis, \
     calc_confusion_matrix
 
@@ -304,65 +305,105 @@ def evaluate_model(model_list, x_test):
 
 def general_mask_evaluation(model_list, x_test):
 
-    mask_features_pos = [11, 12, 13, 14, 15, 18, 22, 23, 25, 31, 34, 38, 39, 35, 20, 19]
-    mask_features_neg = [1, 5, 6, 16, 20, 24, 29, 33]
+    # mask_features_pos = [11, 12, 13, 14, 15, 18, 22, 23, 25, 31, 34, 38, 39, 35, 20, 19]
+    # mask_features_neg = [1, 5, 6, 16, 20, 24, 29, 33]
 
     modulation_levels = [x/10 for x in range(0, 40, 1)]
 
-    gen_model_perf = []
-    gen_model_by_class_perf = []
-    emo_model_perf = []
-    emo_model_by_class_perf = []
+    p_model_id = 0
+    p_class_id = 5
+    u_model_id = 0
+    u_class_id = 2
+    priv_topk_size = 3
+    util_topk_size = 0
 
+    priv_feature_mask, util_feature_mask, features_removed, origi_pmask = general_by_class_mask(p_model_id,
+                                                                                   u_model_id,
+                                                                                   p_class_id,
+                                                                                   u_class_id,
+                                                                                   model_list,
+                                                                                   priv_topk_size,
+                                                                                   util_topk_size)
+
+    priv_feature_mask=[1,35,32]
+    models_perf = [[] for _ in model_list]
+    by_class_models_perf = [[] for _ in model_list]
     print("------------------ Simple evaluation Start------------------")
-    for removal in modulation_levels:
+    for mdl_lvl in modulation_levels:
+
         mask_array = np.ones(40, dtype=float)
-        mask_array[mask_features_neg] = removal
+        mask_array[priv_feature_mask] = mdl_lvl
         x_input = x_test.copy()
         # mask_array = mask_array.astype(bool)
         # Setting only the non top k to 0. Creating a Top k shap where all other values are 0.
         x_input[:, :, 0] = x_input[:, :, 0] * mask_array
         index = 0
 
-        for model_dict in model_list:
-            model_name = model_dict['model_name']
-            model = model_dict['model']
-            y_model_input = model_dict['ground_truth']
+        for model_list_idx in range(len(model_list)):
+            model_name = model_list[model_list_idx]['model_name']
+            model = model_list[model_list_idx]['model']
+            y_model_input = model_list[model_list_idx]['ground_truth']
 
             test_perf = model.evaluate(x_input, y_model_input, verbose=0)
             by_class_perf = evaluate_by_class(model, x_input, y_model_input)
 
-            #calc_confusion_matrix(model, x_input, y_model_input, removal)
+            models_perf[model_list_idx].append(test_perf)
+            by_class_models_perf[model_list_idx].append(by_class_perf)
 
-            if len(y_model_input[0]) == 7:
-                emo_model_perf.append(test_perf)
-                gen_model_by_class_perf.append(by_class_perf)
-            else:
-                gen_model_perf.append(test_perf)
-                emo_model_by_class_perf.append(by_class_perf)
             print("{} Model Test perf is:{}".format(model_name, test_perf))
 
     fig = plt.figure()
     fig.set_size_inches(17, 10)
     fig.set_dpi(100)
 
-    eacc = np.vstack(emo_model_perf)[:, 1]
-    gacc = np.vstack(gen_model_perf)[:, 1]
+    eacc = np.vstack(models_perf[0])[:, 1]
+    gacc = np.vstack(models_perf[1])[:, 1]
 
     x_list = [x for x in range(len(modulation_levels))]
+
     plt.plot(x_list, eacc, label='Emo model ACC')
     plt.plot(x_list, gacc, label='Gen model ACC')
-
-    gclass_perf_list = parse_perf_class(gen_model_by_class_perf)
-
-    for class_data_idx in range(len(gclass_perf_list)):
-        plt.plot(x_list, gclass_perf_list[class_data_idx], label='{} ACC'.format('Gen Model class {}'.format(class_data_idx)))
-
-    plt.title("General mask for {} features".format(mask_features_neg))
+    tlt = "(Overall View) General mask for private model {} with class {}. The Top {}: {} Masked: {}\n".format(p_model_id, p_class_id, priv_topk_size, origi_pmask,priv_feature_mask)
+    tlt2 = "Utility top {} are {}. Priv-Util Match {}".format(util_topk_size, util_feature_mask, features_removed)
+    plt.title(tlt+tlt2)
     plt.ylabel('ACC')
     plt.xlabel('Modulation multiplier')
     plt.legend()
     plt.xticks(x_list, modulation_levels)
+    plt.show()
+
+    fig = plt.figure()
+    fig.set_size_inches(17, 10)
+    fig.set_dpi(100)
+    ax1 = fig.add_subplot(111)
+    number_of_plots = 9
+    colormap = plt.cm.nipy_spectral
+    colors = [colormap(i) for i in np.linspace(0, 1, number_of_plots)]
+    ax1.set_prop_cycle('color', colors)
+
+    for model_idx in range(len(by_class_models_perf)):
+        class_perf_list = parse_perf_class(by_class_models_perf[model_idx])
+
+        for class_data_idx in range(len(class_perf_list)):
+            if class_data_idx == p_class_id and model_idx == p_model_id:
+                clr = 'r'
+                lbl = '{} ACC'.format('(Priv) Model {} class {}'.format(model_idx, class_data_idx))
+                ax1.plot(x_list, class_perf_list[class_data_idx], color=clr, label=lbl)
+            elif class_data_idx == u_class_id and model_idx == u_model_id:
+                clr = 'b'
+                lbl = '{} ACC'.format('(Util) Model {} class {}'.format(model_idx, class_data_idx))
+                ax1.plot(x_list, class_perf_list[class_data_idx], color=clr, label=lbl)
+            else:
+                lbl = '{} ACC'.format('Model {} class {}'.format(model_idx, class_data_idx))
+                plt.plot(x_list, class_perf_list[class_data_idx], label=lbl)
+
+    tlt3 = "(By class View) General mask for private model {} with class {}. The Top {}: {} Masked: {}\n".format(p_model_id, p_class_id, priv_topk_size, origi_pmask, priv_feature_mask)
+    tlt4 = "Utility model {} class {}. Top {}: {}. Priv-Util Match: {}".format(u_model_id, u_class_id, util_topk_size, util_feature_mask, features_removed)
+    ax1.set_title(tlt3+tlt4)
+    ax1.set_ylabel('ACC')
+    ax1.set_xlabel('Modulation multiplier')
+    ax1.set_xticks(x_list, modulation_levels)
+    plt.legend()
     plt.show()
 
     print("------------------ Simple evaluation END ------------------")
@@ -372,7 +413,7 @@ def parse_perf_class(gen_model_by_class_perf):
     class_perf_list = [[] for x in range(len(gen_model_by_class_perf[0]))]
     for classes_perf in gen_model_by_class_perf:
         for class_perf_idx in range(len(classes_perf)):
-            class_perf_list[class_perf_idx].append(classes_perf[class_perf_idx])
+            class_perf_list[class_perf_idx].append(classes_perf[class_perf_idx][1])
     return class_perf_list
 
 

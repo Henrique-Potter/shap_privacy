@@ -105,6 +105,46 @@ def obfuscate_by_topk_class(priv_shap_data, util_shap_data, x_input, priv_target
     return x_input, priv_target_y_input
 
 
+def general_by_class_mask(priv_model_id, util_model_id, priv_class_id, util_class_id, model_list, topk_size, topp_size):
+    import numpy as np
+
+    pmodel = model_list[priv_model_id]
+    pmodel_shap_list = pmodel['shap_values']
+    pclass_shap_list = pmodel_shap_list[priv_class_id]
+    pclass_shap_mean = np.mean(pclass_shap_list, axis=0)
+    p_shap_mean_sorted_idxs = np.argsort(pclass_shap_mean)
+
+    umodel = model_list[util_model_id]
+    umodel_shap_list = umodel['shap_values']
+    uclass_shap_list = umodel_shap_list[util_class_id]
+    uclass_shap_mean = np.mean(uclass_shap_list, axis=0)
+    u_shap_mean_sorted_idxs = np.argsort(uclass_shap_mean)
+
+    if topk_size > 0:
+        # Get the Top K is positive
+        priv_feature_mask = p_shap_mean_sorted_idxs[-topk_size:]
+        util_feature_mask = u_shap_mean_sorted_idxs[-topp_size:]
+
+    else:
+        # Get the Bottom K if negative
+        priv_feature_mask = p_shap_mean_sorted_idxs[:-topk_size]
+        util_feature_mask = u_shap_mean_sorted_idxs[:-topp_size]
+    features_removed = []
+    origi_pmask = priv_feature_mask.copy()
+    if topp_size > 0:
+        # util_topk_shaps_idx = np.flip(util_feature_mask)
+        for shap_val in util_feature_mask:
+            shap_map = priv_feature_mask == shap_val
+            if np.any(shap_map):
+                features_removed.append(shap_val)
+                shap_map = shap_map == False
+                priv_feature_mask = priv_feature_mask[shap_map]
+    else:
+        util_feature_mask = []
+
+    return priv_feature_mask, util_feature_mask, features_removed, origi_pmask
+
+
 def obfuscate_by_class_util_weigh(priv_shap_data, util_shap_data, x_input, target_y_input, eval_y_input, obf_intensity, **kwargs):
     import numpy as np
 
