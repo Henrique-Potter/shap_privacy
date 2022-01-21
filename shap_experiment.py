@@ -305,27 +305,23 @@ def evaluate_model(model_list, x_test):
 
 def general_mask_evaluation(model_list, x_test):
 
-    # mask_features_pos = [11, 12, 13, 14, 15, 18, 22, 23, 25, 31, 34, 38, 39, 35, 20, 19]
-    # mask_features_neg = [1, 5, 6, 16, 20, 24, 29, 33]
-
     modulation_levels = [x/10 for x in range(0, 40, 1)]
 
     p_model_id = 0
-    p_class_id = 5
-    u_model_id = 0
-    u_class_id = 2
-    priv_topk_size = 3
-    util_topk_size = 0
+    p_class_id = 4
+    u_model_id = 1
+    u_class_id = 0
+    priv_topk_size = 12
+    util_topk_size = 24
 
     priv_feature_mask, util_feature_mask, features_removed, origi_pmask = general_by_class_mask(p_model_id,
-                                                                                   u_model_id,
-                                                                                   p_class_id,
-                                                                                   u_class_id,
-                                                                                   model_list,
-                                                                                   priv_topk_size,
-                                                                                   util_topk_size)
+                                                                                                u_model_id,
+                                                                                                p_class_id,
+                                                                                                u_class_id,
+                                                                                                model_list,
+                                                                                                priv_topk_size,
+                                                                                                util_topk_size)
 
-    priv_feature_mask=[1,35,32]
     models_perf = [[] for _ in model_list]
     by_class_models_perf = [[] for _ in model_list]
     print("------------------ Simple evaluation Start------------------")
@@ -581,12 +577,32 @@ def evaluate_by_class(model, obfuscated_x, y_model_input):
         single_class_map = y_model_input[:, cls_index] == 1
         if np.sum(single_class_map) == 0:
             break
+
+        #simple_bar_plot(obfuscated_x, cls_index)
+
         obfuscated_x_single_class = obfuscated_x[single_class_map]
         y_model_input_single_class = y_model_input[single_class_map]
         obfuscated_single_class_perf = model.evaluate(obfuscated_x_single_class, y_model_input_single_class, verbose=0)
         by_class_perf.append(obfuscated_single_class_perf)
 
     return by_class_perf
+
+
+def simple_bar_plot(obfuscated_x, class_id):
+    fig = plt.figure()
+    fig.set_size_inches(17, 10)
+    fig.set_dpi(100)
+    x_list = [x for x in range(39)]
+
+    random_idx = np.random.randint(0, obfuscated_x.shape[0])
+    data_mean = np.mean(obfuscated_x[:, 1:, 0])
+
+    plt.bar(x_list, data_mean, axis=0)
+    plt.ylabel('MFCC')
+    plt.xlabel('Features 1-39')
+    plt.title('Class nr {}'.format(class_id))
+    plt.legend()
+    plt.show()
 
 
 def parse_shap_values_by_class(shap_data, y_data):
