@@ -3,11 +3,14 @@ from sklearn.metrics import confusion_matrix
 from tensorflow import keras
 import numpy as np
 
+from util.custom_functions import plot_confusion_matrix
+
 
 class PerClassMetrics(keras.callbacks.Callback):
 
-    def __init__(self, model, val_data, batch_size):
+    def __init__(self, model, val_data, batch_size, model_id):
         self.model = model
+        self.model_id = model_id
         self.validation_data = val_data
         self.batch_size = batch_size
 
@@ -35,8 +38,8 @@ class PerClassMetrics(keras.callbacks.Callback):
         })
 
         if epoch % 200 == 0:
-            self.plot_confusion_matrix(self.cm)
-            self.plot_confusion_matrix(self.cm_raw)
+            plot_confusion_matrix(self.cm, self.model_id, 0)
+            # plot_confusion_matrix(self.cm_raw)
 
         accs = self.cm.diagonal()
 
@@ -45,8 +48,6 @@ class PerClassMetrics(keras.callbacks.Callback):
             print(" " * 40 + "C{}: {}".format(cl, accs[cl]))
 
         return
-
-
 
     def get_data(self):
         return self._data

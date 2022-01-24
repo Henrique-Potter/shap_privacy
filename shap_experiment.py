@@ -305,14 +305,14 @@ def evaluate_model(model_list, x_test):
 
 def general_mask_evaluation(model_list, x_test):
 
-    modulation_levels = [x/10 for x in range(0, 40, 1)]
+    modulation_levels = [x/10 for x in range(7, 13, 1)]
 
     p_model_id = 0
-    p_class_id = 4
-    u_model_id = 1
-    u_class_id = 0
-    priv_topk_size = 12
-    util_topk_size = 24
+    p_class_id = 5
+    u_model_id = 0
+    u_class_id = 1
+    priv_topk_size = 10
+    util_topk_size = 10
 
     priv_feature_mask, util_feature_mask, features_removed, origi_pmask = general_by_class_mask(p_model_id,
                                                                                                 u_model_id,

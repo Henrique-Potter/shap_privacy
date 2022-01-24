@@ -1,11 +1,11 @@
 import tensorflow as tf
 from data_processing import *
 from experiment_neural_nets import build_fser_emo_model
-from util.custom_functions import train_model
+from util.trainning_engine import train_model
 
 print("Num GPUs Available: ", len(tf.config.list_physical_devices('GPU')))
 
-emo_model_path = './emo_checkpoint/fser_emodel.h5'
+emo_model_path = './emo_checkpoint/fser_mel_emodel.h5'
 
 get_emotion_label = True
 tf.random.set_seed(42)
@@ -16,19 +16,19 @@ def main():
     audio_files_path = "./NNDatasets/audio/"
 
     print("Pre-processing audio files!")
-    x_traincnn, y_train, x_testcnn, y_test = pre_process_fseer_data2(audio_files_path, get_emotion_label)
+    x_traincnn, y_train, x_testcnn, y_test = pre_process_audio_to_mel_data(audio_files_path)
     print("Pre-processing audio files Complete!")
     import numpy as np
     print("Building Neural Net")
-    x_traincnn = np.reshape(x_traincnn, (x_traincnn.shape[0], 64, 64, 1))
-    x_testcnn = np.reshape(x_testcnn, (x_testcnn.shape[0], 64, 64, 1))
+    x_traincnn = np.reshape(x_traincnn, (x_traincnn.shape[0], 128, 128, 1))
+    x_testcnn = np.reshape(x_testcnn, (x_testcnn.shape[0], 128, 128, 1))
 
     model = build_fser_emo_model(x_traincnn)
     model_path = emo_model_path
 
     print("Starting model training!")
     if not Path(model_path).exists():
-        train_model(model, model_path, 64, 1200, x_traincnn, y_train, x_testcnn, y_test, get_emotion_label)
+        train_model(model, model_path, 256, 1200, x_traincnn, y_train, x_testcnn, y_test, get_emotion_label)
         test_acc = model.evaluate(x_testcnn, y_test, batch_size=128)
         train_acc = model.evaluate(x_traincnn, y_train, batch_size=128)
         print("Emo Model Train perf is:{}, Test perf is:{}".format(train_acc, test_acc))

@@ -116,6 +116,7 @@ def build_emo_model3(input_sample):
 
 	return model
 
+
 def build_fser_emo_model(input_sample):
 
 	input_shape = input_sample.shape
@@ -151,7 +152,7 @@ def build_fser_emo_model(input_sample):
 	model.summary()
 
 	model.add(Activation('softmax'))
-	opt = optimizers.Adam(learning_rate=0.00001)
+	opt = optimizers.Adam(learning_rate=0.000001)
 	# opt = optimizers.Adam()
 	# opt = optimizers.RMSprop(learning_rate=0.00001, decay=1e-6)
 	# opt = optimizers.RMSprop(learning_rate=0.00005, rho=0.9, epsilon=None, decay=0.0)
