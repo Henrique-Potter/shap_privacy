@@ -191,7 +191,7 @@ def extract_mfcc_matrix_from_raw_ndarray_aug_shift(X_train, n_mfcc, shift_array,
     return audio_features_df.values, audio_features_df_pos_shift.values, audio_features_df_neg_shift.values
 
 
-def extract_mel_matrix_from_raw_ndarray_aug_shift(x_data, shift_positions, matrix_size, n_fft=2048, n_mels=128):
+def extract_mel_matrix_from_raw_ndarray_aug_shift(x_data, shift_positions, n_mels, n_fft=2048):
     from scipy.ndimage.interpolation import shift
     x_index = 0
 
@@ -208,7 +208,7 @@ def extract_mel_matrix_from_raw_ndarray_aug_shift(x_data, shift_positions, matri
         mel1 = mel1[:, non_zero_idxs[0]:non_zero_idxs[-1]]
         mel1 = librosa.power_to_db(mel1, ref=np.max)
 
-        mel1 = cv2.resize(mel1, dsize=(matrix_size, matrix_size), interpolation=cv2.INTER_CUBIC)
+        mel1 = cv2.resize(mel1, dsize=(n_mels, n_mels), interpolation=cv2.INTER_CUBIC)
 
         mel1 = mel1.flatten()
         audio_features_np[x_index, :] = mel1
@@ -219,7 +219,7 @@ def extract_mel_matrix_from_raw_ndarray_aug_shift(x_data, shift_positions, matri
         mel2 = mel2[:, non_zero_idxs[0]:non_zero_idxs[-1]]
         mel2 = librosa.power_to_db(mel2, ref=np.max)
 
-        mel2 = cv2.resize(mel2, dsize=(matrix_size, matrix_size), interpolation=cv2.INTER_CUBIC)
+        mel2 = cv2.resize(mel2, dsize=(n_mels, n_mels), interpolation=cv2.INTER_CUBIC)
         mel2 = mel2.flatten()
         audio_features_np_pos_shift[x_index, :] = mel2
 
@@ -228,7 +228,7 @@ def extract_mel_matrix_from_raw_ndarray_aug_shift(x_data, shift_positions, matri
         non_zero_idxs = np.argwhere(np.mean(mel3, axis=0) != 0)[:, 0]
         mel3 = mel3[:, non_zero_idxs[0]:non_zero_idxs[-1]]
         mel3 = librosa.power_to_db(mel3, ref=np.max)
-        mel3 = cv2.resize(mel3, dsize=(matrix_size, matrix_size), interpolation=cv2.INTER_CUBIC)
+        mel3 = cv2.resize(mel3, dsize=(n_mels, n_mels), interpolation=cv2.INTER_CUBIC)
         mel3 = mel3.flatten()
         audio_features_np_neg_shift[x_index, :] = mel3
 
@@ -328,7 +328,7 @@ def pre_process_fseer_data(audio_files_path, n_mfcc=40, get_emotion_label=True, 
     return X_train_mfcc, y_train_encoded, X_test_mfcc, y_test_encoded
 
 
-def pre_process_audio_to_mel_data(audio_files_path, matrix_size=128, get_emotion_label=True, augment_data=False):
+def pre_process_audio_to_mel_data(audio_files_path, n_mels=128, get_emotion_label=True, augment_data=False):
 
     audio_files = glob.glob("{}/**/*.wav".format(audio_files_path), recursive=True)
 
@@ -377,17 +377,17 @@ def pre_process_audio_to_mel_data(audio_files_path, matrix_size=128, get_emotion
     y_train_encoded = np_utils.to_categorical(lb.fit_transform(y_train_np))
     y_test_encoded = np_utils.to_categorical(lb.fit_transform(y_test_np))
 
-    train_data_mel_aug_path = 'data/audio_train_data_mel_matrix{}_aug_np.npy'.format(matrix_size)
-    train_data_mel_path = 'data/audio_train_data_mel_matrix{}_np.npy'.format(matrix_size)
+    train_data_mel_aug_path = 'data/audio_train_data_mel_matrix{}_aug_np.npy'.format(n_mels)
+    train_data_mel_path = 'data/audio_train_data_mel_matrix{}_np.npy'.format(n_mels)
 
     print("Extracting mels from raw nd train audio data split.")
     if augment_data:
         if not Path(train_data_mel_aug_path).exists():
             print("Augmenting data!")
-            X_train1, X_train2, X_train3 = extract_mel_matrix_from_raw_ndarray_aug_shift(X_train_np, 5000, matrix_size)
+            X_train1, X_train2, X_train3 = extract_mel_matrix_from_raw_ndarray_aug_shift(X_train_np, 5000, n_mels)
             X_train_mel_matrix = np.concatenate((X_train1, X_train2, X_train3), axis=0)
 
-            np.save(train_data_mel_aug_path.format(matrix_size), X_train_mel_matrix)
+            np.save(train_data_mel_aug_path.format(n_mels), X_train_mel_matrix)
             y_train_encoded = np.concatenate((y_train_encoded, y_train_encoded, y_train_encoded), axis=0)
         else:
             print("Augmented train data found. Loading from npy file.")
@@ -397,18 +397,18 @@ def pre_process_audio_to_mel_data(audio_files_path, matrix_size=128, get_emotion
     else:
         if not Path(train_data_mel_path).exists():
             # Ignoring the augmentation [0]
-            X_train_mel_matrix = extract_mel_matrix_from_raw_ndarray_aug_shift(X_train_np, 5000, matrix_size)[0]
+            X_train_mel_matrix = extract_mel_matrix_from_raw_ndarray_aug_shift(X_train_np, 5000, n_mels)[0]
             np.save(train_data_mel_path, X_train_mel_matrix)
         else:
             print("Train data found. Loading from npy file.")
             X_train_mel_matrix = np.load(train_data_mel_path, allow_pickle=True)
         print("Loading train successful.")
 
-    test_data_mfcc_path = 'data/audio_test_data_mel_matrix{}_np.npy'.format(matrix_size)
+    test_data_mfcc_path = 'data/audio_test_data_mel_matrix{}_np.npy'.format(n_mels)
     print("Extracting mels from raw nd test audio data split.")
     if not Path(test_data_mfcc_path).exists():
         # Ignoring the augmentation [0]
-        X_test_mel = extract_mel_matrix_from_raw_ndarray_aug_shift(X_test_np, 5000, matrix_size)[0]
+        X_test_mel = extract_mel_matrix_from_raw_ndarray_aug_shift(X_test_np, 5000, n_mels)[0]
         np.save(test_data_mfcc_path, X_test_mel)
     else:
         print("Test data found. Loading from npy file.")

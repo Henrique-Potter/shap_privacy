@@ -145,52 +145,6 @@ def general_by_class_mask(priv_model_id, util_model_id, priv_class_id, util_clas
     return priv_feature_mask, util_feature_mask, features_removed, origi_pmask
 
 
-def obfuscate_by_class_util_weigh(priv_shap_data, util_shap_data, x_input, target_y_input, eval_y_input, obf_intensity, **kwargs):
-    import numpy as np
-
-    class_index = kwargs['class_index']
-    force_y_match = kwargs['force_y_match']
-    # top k number
-    k = kwargs['k']
-    priv_class_shap = priv_shap_data[class_index]
-    nr_features = priv_class_shap.shape[1]
-    target_class_size = priv_class_shap.shape[0]
-    class_x_input = np.ndarray(shape=(target_class_size, nr_features, 1), dtype=float)
-
-    x_data_y_match = []
-    local_class_index = 0
-
-    for index in range(x_input.shape[0]):
-        class_value = target_y_input[index, class_index]
-
-        if class_value:
-            priv_shap_row = priv_class_shap[local_class_index]
-            shap_sorted_indexes = np.argsort(priv_shap_row)
-            topk_shaps = shap_sorted_indexes[-k:]
-            # Creating mask for the non top k
-            mask_array = np.ones(nr_features, dtype=int)
-            mask_array[topk_shaps] = 0
-            mask_array = mask_array.astype(bool)
-            # Setting only the non top k to 0. Creating a Top k shap where all other values are 0.
-            priv_shap_row[mask_array] = 0
-
-            x_target = x_input[index, :, 0]
-            obs_x = norm_noise(priv_shap_row, x_target, obf_intensity)
-            x_input[index, :, 0] = obs_x
-
-            if force_y_match:
-                class_x_input[local_class_index, :, 0] = obs_x
-                x_data_y_match.append(eval_y_input[index])
-
-            local_class_index += 1
-
-    if force_y_match:
-        x_input = class_x_input
-        target_y_input = np.array(x_data_y_match)
-
-    return x_input, target_y_input
-
-
 def norm_noise(shap_values, x_target, sigma):
     import numpy as np
 
@@ -209,5 +163,5 @@ def norm_noise(shap_values, x_target, sigma):
     scaled_input = x_target * shap_scaled_noise
 
     obfuscated_input = x_target + scaled_input
-    temp = np.vstack((x_target, obfuscated_input,shap_values))
+    temp = np.vstack((x_target, obfuscated_input, shap_values))
     return obfuscated_input

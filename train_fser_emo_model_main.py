@@ -14,21 +14,24 @@ tf.random.set_seed(42)
 def main():
 
     audio_files_path = "./NNDatasets/audio/"
+    n_mels = 64
 
     print("Pre-processing audio files!")
-    x_traincnn, y_train, x_testcnn, y_test = pre_process_audio_to_mel_data(audio_files_path)
+    x_traincnn, y_train, x_testcnn, y_test = pre_process_audio_to_mel_data(audio_files_path, n_mels)
     print("Pre-processing audio files Complete!")
     import numpy as np
     print("Building Neural Net")
-    x_traincnn = np.reshape(x_traincnn, (x_traincnn.shape[0], 128, 128, 1))
-    x_testcnn = np.reshape(x_testcnn, (x_testcnn.shape[0], 128, 128, 1))
+    x_traincnn = np.reshape(x_traincnn, (x_traincnn.shape[0], n_mels, n_mels, 1))
+    x_testcnn = np.reshape(x_testcnn, (x_testcnn.shape[0], n_mels, n_mels, 1))
 
     model = build_fser_emo_model(x_traincnn)
     model_path = emo_model_path
 
     print("Starting model training!")
     if not Path(model_path).exists():
-        train_model(model, model_path, 256, 1200, x_traincnn, y_train, x_testcnn, y_test, get_emotion_label)
+        train_model(model, model_path, 64, 100, x_traincnn, y_train, x_testcnn, y_test, get_emotion_label)
+        train_model(model, model_path, 16, 400, x_traincnn, y_train, x_testcnn, y_test, get_emotion_label)
+
         test_acc = model.evaluate(x_testcnn, y_test, batch_size=128)
         train_acc = model.evaluate(x_traincnn, y_train, batch_size=128)
         print("Emo Model Train perf is:{}, Test perf is:{}".format(train_acc, test_acc))
@@ -41,8 +44,7 @@ def main():
         print("Check point found. Loading existent Emo Model.")
         # Restore the weights
         model = tf.keras.models.load_model(model_path)
-        train_model(model, model_path, 32, 1200, x_traincnn, y_train, x_testcnn, y_test, get_emotion_label)
-        train_model(model, model_path, 16, 1200, x_traincnn, y_train, x_testcnn, y_test, get_emotion_label)
+        train_model(model, model_path, 64, 20000, x_traincnn, y_train, x_testcnn, y_test, get_emotion_label)
 
         test_acc = model.evaluate(x_testcnn, y_test, batch_size=128)
         train_acc = model.evaluate(x_traincnn, y_train, batch_size=128)

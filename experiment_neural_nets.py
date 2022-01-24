@@ -123,12 +123,12 @@ def build_fser_emo_model(input_sample):
 
 	model = Sequential()
 
-	model.add(Conv2D(filters=8, kernel_size=(5, 5), strides=(1, 1),  input_shape=(input_shape[1], input_shape[2], input_shape[3])))
+	model.add(Conv2D(filters=8, kernel_size=(5, 5), input_shape=(input_shape[1], input_shape[2], input_shape[3])))
 	model.add(Activation('relu'))
 	model.add(MaxPool2D(pool_size=(2, 2)))
 	model.add(Dropout(0.2))
 
-	model.add(Conv2D(filters=16, kernel_size=(5, 5), strides=(1, 1)))
+	model.add(Conv2D(filters=16, kernel_size=(5, 5)))
 	model.add(Activation('relu'))
 	model.add(MaxPool2D(pool_size=(2, 2)))
 	model.add(Dropout(0.2))
@@ -149,15 +149,13 @@ def build_fser_emo_model(input_sample):
 	model.add(Dense(500))
 	model.add(Dense(7))
 
-	model.summary()
-
 	model.add(Activation('softmax'))
-	opt = optimizers.Adam(learning_rate=0.000001)
+	opt = optimizers.Adam(learning_rate=0.0000005)
 	# opt = optimizers.Adam()
 	# opt = optimizers.RMSprop(learning_rate=0.00001, decay=1e-6)
 	# opt = optimizers.RMSprop(learning_rate=0.00005, rho=0.9, epsilon=None, decay=0.0)
 
-	#opt = optimizers.SGD(learning_rate=0.001)
+	# opt = optimizers.SGD(learning_rate=0.001)
 
 	model.compile(loss='categorical_crossentropy', optimizer=opt, metrics=['accuracy'])
 	model.summary()
