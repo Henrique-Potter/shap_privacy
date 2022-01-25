@@ -90,12 +90,12 @@ def main():
     # # Sanity check model performance check
     # evaluate_model(model_list, x_test_gen_cnn)
 
-    general_mask_evaluation(model_list, x_test_gen_cnn)
+    # general_mask_evaluation(model_list, x_test_gen_cnn)
 
     # Evaluating obfuscation functions
-    # perf_list = evaluate_obfuscation_function(model_list,
-    #                                           obfuscation_f_list,
-    #                                           x_test_gen_cnn)
+    perf_list = evaluate_obfuscation_function(model_list,
+                                              obfuscation_f_list,
+                                              x_test_gen_cnn)
 
     # Plotting results
     # plot_obs_f_performance(perf_list)
@@ -202,17 +202,15 @@ def obfuscate_and_evaluate(model_dict,
 
     for i in range(avg_reps):
 
-        local_priv_shap_data = copy_numpy_matrix_list(priv_shap_data)
-        local_util_shap_data = copy_numpy_matrix_list(util_shap_data)
+        # local_priv_shap_data = copy_numpy_matrix_list(priv_shap_data)
+        # local_util_shap_data = copy_numpy_matrix_list(util_shap_data)
 
         local_x_data = x_model_input.copy()
         local_y_data = curr_y_labels.copy()
 
         # Applying Obfuscation Function
         # y_match returns x->y labels in case x was changed
-        obfuscated_x, y_match = obf_f(local_priv_shap_data,
-                                      local_util_shap_data,
-                                      local_x_data,
+        obfuscated_x, y_match = obf_f(local_x_data,
                                       priv_target_mdl,
                                       util_target_mdl,
                                       local_y_data,

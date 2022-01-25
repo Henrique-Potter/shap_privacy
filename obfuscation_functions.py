@@ -1,3 +1,4 @@
+import scipy
 
 
 def obfuscate_by_class(priv_shap_data, util_shap_data, x_input, y_input_test, obf_intensity, **kwargs):
@@ -103,6 +104,68 @@ def obfuscate_by_topk_class(priv_shap_data, util_shap_data, x_input, priv_target
         priv_target_y_input = np.array(x_data_y_match)
 
     return x_input, priv_target_y_input
+
+
+def general_obf_topk_class(x_input, priv_target_mdl, util_target_mdl, curr_y_gt_labels, obf_intensity, **kwargs):
+    import numpy as np
+
+    priv_class = priv_target_mdl['priv_class']
+    util_class = priv_target_mdl['util_class']
+
+    pmodel = priv_target_mdl
+    pmodel_shap_list = pmodel['shap_values']
+    pclass_shap_list = pmodel_shap_list[priv_class]
+    pclass_shap_mean = np.mean(pclass_shap_list, axis=0)
+    pclass_shap_mean_abs = np.mean(np.abs(pclass_shap_list), axis=0)
+    p_shap_mean_sorted_idxs = np.argsort(pclass_shap_mean)
+    priv_input = x_input[np.argmax(curr_y_gt_labels, axis=1) == priv_class]
+
+    priv_pear = calculate_correlation(pclass_shap_list, priv_input)
+
+    # t2 = priv_pear
+    #
+    # umodel = util_target_mdl
+    # umodel_shap_list = umodel['shap_values']
+    # uclass_shap_list = umodel_shap_list[util_class]
+    # uclass_shap_mean = np.mean(uclass_shap_list, axis=0)
+    # u_shap_mean_sorted_idxs = np.argsort(uclass_shap_mean)
+
+
+
+    return x_input, curr_y_gt_labels
+
+
+def calculate_correlation(pclass_shap_list, priv_input):
+    import numpy as np
+    import pygam as pg
+    nr_rows = pclass_shap_list.shape[0]
+    nr_cols = pclass_shap_list.shape[1]
+
+    pear_corr_matrix = np.zeros((1, nr_cols))
+
+    for sample_col in range(nr_cols):
+        X = priv_input[:, sample_col, 0]
+        Y = pclass_shap_list[:, sample_col]
+        sample_shap_pcorr = scipy.stats.pearsonr(X, Y)[0]
+        sample_shap_spcorr = scipy.stats.spearmanr(X, Y)[0]
+        sample_shap_kencorr = scipy.stats.kendalltau(X, Y)[0]
+        pear_corr_matrix[:, sample_col] = sample_shap_spcorr
+
+    return pear_corr_matrix
+
+
+def plot_linear_gam(X, y):
+    import pygam as pg
+    from pygam import LinearGAM, s, f, te
+    import matplotlib.pyplot as plt
+
+    gam = pg.LinearGAM(f(0) + s(0) + s(0) + s(0) + s(0)).fit(X, y)
+    XX = gam.generate_X_grid(term=0, n=500)
+    plt.plot(XX, gam.predict(XX), 'r--')
+    plt.plot(XX, gam.prediction_intervals(XX, width=.95), color='b', ls='--')
+    plt.scatter(X, y, facecolor='gray', edgecolors='none')
+    plt.title('95% prediction interval');
+    plt.show()
 
 
 def general_by_class_mask(priv_model_id, util_model_id, priv_class_id, util_class_id, model_list, topk_size, topp_size):

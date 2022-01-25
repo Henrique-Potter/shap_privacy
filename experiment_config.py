@@ -1,4 +1,4 @@
-from obfuscation_functions import obfuscate_by_topk_class
+from obfuscation_functions import obfuscate_by_topk_class, general_obf_topk_class
 
 
 def set_experiment_config(emo_model, gender_model, emo_gt_shap_list, gen_gt_shap_list, y_test_emo_encoded, y_test_gen_encoded):
@@ -8,6 +8,7 @@ def set_experiment_config(emo_model, gender_model, emo_gt_shap_list, gen_gt_shap
                       'ground_truth': y_test_emo_encoded,
                       'privacy_target': True,
                       'priv_class': 2,
+                      'util_class': 5,
                       'shap_values': emo_gt_shap_list,
                       'utility_target': False}
 
@@ -24,17 +25,26 @@ def set_experiment_config(emo_model, gender_model, emo_gt_shap_list, gen_gt_shap
     # Noise intensity List
     norm_noise_list = [1 + x / 100 for x in range(10, 100, 3)]
     obfuscation_f_list = []
-    obf_by_topk_class2 = {'obf_f_handler': obfuscate_by_topk_class,
-                          'intensities': norm_noise_list,
-                          'kwargs': {'k': 6, 'force_y_match': 1, 'avg_reps': 2, 'protec_util': 1,
-                                     'p': 0},
-                          'label': 'obf_totk_6_'}
 
-    obf_by_topk_class3 = {'obf_f_handler': obfuscate_by_topk_class,
+    obf_by_gen_topk_class = {'obf_f_handler': general_obf_topk_class,
                           'intensities': norm_noise_list,
-                          'kwargs': {'k': 6, 'force_y_match': 1, 'avg_reps': 2, 'protec_util': 1,
-                                     'p': 0},
-                          'label': 'obf_totk_3_female'}
-    obfuscation_f_list.append(obf_by_topk_class2)
-    obfuscation_f_list.append(obf_by_topk_class3)
+                          'kwargs': {'k': 6, 'force_y_match': 1, 'avg_reps': 1, 'protec_util': 1, 'p': 3},
+                          'label': 'obf_gen_totk_6_'}
+
+    # obf_by_topk_class2 = {'obf_f_handler': obfuscate_by_topk_class,
+    #                       'intensities': norm_noise_list,
+    #                       'kwargs': {'k': 6, 'force_y_match': 1, 'avg_reps': 2, 'protec_util': 1,
+    #                                  'p': 0},
+    #                       'label': 'obf_totk_6_'}
+    #
+    # obf_by_topk_class3 = {'obf_f_handler': obfuscate_by_topk_class,
+    #                       'intensities': norm_noise_list,
+    #                       'kwargs': {'k': 6, 'force_y_match': 1, 'avg_reps': 2, 'protec_util': 1,
+    #                                  'p': 0},
+    #                       'label': 'obf_totk_3_female'}
+    #
+    # obfuscation_f_list.append(obf_by_topk_class2)
+    # obfuscation_f_list.append(obf_by_topk_class3)
+
+    obfuscation_f_list.append(obf_by_gen_topk_class)
     return model_list, obfuscation_f_list
