@@ -110,7 +110,10 @@ def general_obf_topk_class(x_input, priv_target_mdl, util_target_mdl, curr_y_gt_
     import numpy as np
 
     priv_class = priv_target_mdl['priv_class']
-    util_class = priv_target_mdl['util_class']
+    util_class = util_target_mdl['util_class']
+    topk_size = kwargs['k']
+    topp_size = kwargs['p']
+    feature_size = x_input.shape[1]
 
     pmodel = priv_target_mdl
     pmodel_shap_list = pmodel['shap_values']
@@ -121,15 +124,44 @@ def general_obf_topk_class(x_input, priv_target_mdl, util_target_mdl, curr_y_gt_
     priv_input = x_input[np.argmax(curr_y_gt_labels, axis=1) == priv_class]
 
     priv_pear = calculate_correlation(pclass_shap_list, priv_input)
+    direction_mask = priv_pear.copy()
+    direction_mask[priv_pear < 0] = -1
+    direction_mask[priv_pear > 0] = 1
 
-    # t2 = priv_pear
-    #
-    # umodel = util_target_mdl
-    # umodel_shap_list = umodel['shap_values']
-    # uclass_shap_list = umodel_shap_list[util_class]
-    # uclass_shap_mean = np.mean(uclass_shap_list, axis=0)
-    # u_shap_mean_sorted_idxs = np.argsort(uclass_shap_mean)
+    umodel = util_target_mdl
+    umodel_shap_list = umodel['shap_values']
+    uclass_shap_list = umodel_shap_list[util_class]
+    uclass_shap_mean = np.mean(uclass_shap_list, axis=0)
+    u_shap_mean_sorted_idxs = np.argsort(uclass_shap_mean)
 
+    if topk_size > 0:
+        # Get the Top K is positive
+        priv_feature_mask = p_shap_mean_sorted_idxs[-topk_size:]
+        util_feature_mask = u_shap_mean_sorted_idxs[-topp_size:]
+
+    else:
+        # Get the Bottom K if negative
+        priv_feature_mask = p_shap_mean_sorted_idxs[:-topk_size]
+        util_feature_mask = u_shap_mean_sorted_idxs[:-topp_size]
+    features_removed = []
+    origi_pmask = priv_feature_mask.copy()
+    if topp_size > 0:
+        # util_topk_shaps_idx = np.flip(util_feature_mask)
+        for shap_val in util_feature_mask:
+            shap_map = priv_feature_mask == shap_val
+            if np.any(shap_map):
+                features_removed.append(shap_val)
+                shap_map = shap_map == False
+                priv_feature_mask = priv_feature_mask[shap_map]
+    else:
+        util_feature_mask = []
+
+    rnd_mask = np.random.randint(1, 10, size=40) / 100 + 1
+    rnd_mask_dir = rnd_mask * direction_mask
+    rnd_mask_dir_lvl = rnd_mask_dir * obf_intensity
+
+    topk_mask = np.ones(feature_size)
+    topk_mask[priv_feature_mask] = rnd_mask_dir_lvl
 
 
     return x_input, curr_y_gt_labels
@@ -137,11 +169,10 @@ def general_obf_topk_class(x_input, priv_target_mdl, util_target_mdl, curr_y_gt_
 
 def calculate_correlation(pclass_shap_list, priv_input):
     import numpy as np
-    import pygam as pg
     nr_rows = pclass_shap_list.shape[0]
     nr_cols = pclass_shap_list.shape[1]
 
-    pear_corr_matrix = np.zeros((1, nr_cols))
+    pear_corr_matrix = np.zeros(nr_cols)
 
     for sample_col in range(nr_cols):
         X = priv_input[:, sample_col, 0]
@@ -149,7 +180,7 @@ def calculate_correlation(pclass_shap_list, priv_input):
         sample_shap_pcorr = scipy.stats.pearsonr(X, Y)[0]
         sample_shap_spcorr = scipy.stats.spearmanr(X, Y)[0]
         sample_shap_kencorr = scipy.stats.kendalltau(X, Y)[0]
-        pear_corr_matrix[:, sample_col] = sample_shap_spcorr
+        pear_corr_matrix[sample_col] = sample_shap_spcorr
 
     return pear_corr_matrix
 

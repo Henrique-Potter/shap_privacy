@@ -44,7 +44,7 @@ def main():
         print("Check point found. Loading existent Emo Model.")
         # Restore the weights
         model = tf.keras.models.load_model(model_path)
-        train_model(model, model_path, 64, 20000, x_traincnn, y_train, x_testcnn, y_test, get_emotion_label)
+        train_model(model, model_path, 64, 10000, x_traincnn, y_train, x_testcnn, y_test, get_emotion_label)
 
         test_acc = model.evaluate(x_testcnn, y_test, batch_size=128)
         train_acc = model.evaluate(x_traincnn, y_train, batch_size=128)

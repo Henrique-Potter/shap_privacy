@@ -8,7 +8,6 @@ def set_experiment_config(emo_model, gender_model, emo_gt_shap_list, gen_gt_shap
                       'ground_truth': y_test_emo_encoded,
                       'privacy_target': True,
                       'priv_class': 2,
-                      'util_class': 5,
                       'shap_values': emo_gt_shap_list,
                       'utility_target': False}
 
@@ -16,6 +15,7 @@ def set_experiment_config(emo_model, gender_model, emo_gt_shap_list, gen_gt_shap
                       'model': gender_model,
                       'ground_truth': y_test_gen_encoded,
                       'privacy_target': False,
+                      'util_class': 0,
                       'shap_values': gen_gt_shap_list,
                       'utility_target': True}
 
