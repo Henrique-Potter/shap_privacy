@@ -17,7 +17,7 @@ def main():
     n_mels = 64
 
     print("Pre-processing audio files!")
-    x_traincnn, y_train, x_testcnn, y_test = pre_process_audio_to_mel_data(audio_files_path, n_mels)
+    x_traincnn, y_train, x_testcnn, y_test = pre_process_audio_to_mel_data(audio_files_path, n_mels, augment_data=True)
     print("Pre-processing audio files Complete!")
     import numpy as np
     print("Building Neural Net")
@@ -44,7 +44,7 @@ def main():
         print("Check point found. Loading existent Emo Model.")
         # Restore the weights
         model = tf.keras.models.load_model(model_path)
-        train_model(model, model_path, 64, 10000, x_traincnn, y_train, x_testcnn, y_test, get_emotion_label)
+        train_model(model, model_path, 64, 20000, x_traincnn, y_train, x_testcnn, y_test, get_emotion_label)
 
         test_acc = model.evaluate(x_testcnn, y_test, batch_size=128)
         train_acc = model.evaluate(x_traincnn, y_train, batch_size=128)

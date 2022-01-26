@@ -193,48 +193,69 @@ def extract_mfcc_matrix_from_raw_ndarray_aug_shift(X_train, n_mfcc, shift_array,
 
 def extract_mel_matrix_from_raw_ndarray_aug_shift(x_data, shift_positions, n_mels, n_fft=2048):
     from scipy.ndimage.interpolation import shift
-    x_index = 0
 
+    x_index = 0
     sample_rate = 22050 * 2
 
     audio_features_np = np.zeros((x_data.shape[0], n_mels*n_mels))
     audio_features_np_pos_shift = np.zeros((x_data.shape[0], n_mels*n_mels))
     audio_features_np_neg_shift = np.zeros((x_data.shape[0], n_mels*n_mels))
+    audio_features_np_rnd_1 = np.zeros((x_data.shape[0], n_mels*n_mels))
+    audio_features_np_rnd_2 = np.zeros((x_data.shape[0], n_mels*n_mels))
+    audio_features_np_rnd_3 = np.zeros((x_data.shape[0], n_mels*n_mels))
+
+    output_list = []
+    output_list.append(audio_features_np)
+    output_list.append(audio_features_np_pos_shift)
+    output_list.append(audio_features_np_neg_shift)
+    output_list.append(audio_features_np_rnd_1)
+    output_list.append(audio_features_np_rnd_2)
+    output_list.append(audio_features_np_rnd_3)
 
     for x_row in tqdm(x_data):
 
-        mel1 = librosa.feature.melspectrogram(y=x_row, sr=sample_rate, n_fft=n_fft, n_mels=n_mels)
-        non_zero_idxs = np.argwhere(np.mean(mel1, axis=0) != 0)[:, 0]
-        mel1 = mel1[:, non_zero_idxs[0]:non_zero_idxs[-1]]
-        mel1 = librosa.power_to_db(mel1, ref=np.max)
-
-        mel1 = cv2.resize(mel1, dsize=(n_mels, n_mels), interpolation=cv2.INTER_CUBIC)
-
-        mel1 = mel1.flatten()
-        audio_features_np[x_index, :] = mel1
+        extract_mel_to_nd_array(audio_features_np, n_fft, n_mels, sample_rate, x_index, x_row)
 
         x_row_pos = shift(x_row, shift_positions, cval=0)
-        mel2 = librosa.feature.melspectrogram(y=x_row_pos, sr=sample_rate, n_fft=n_fft, n_mels=n_mels)
-        non_zero_idxs = np.argwhere(np.mean(mel2, axis=0) != 0)[:, 0]
-        mel2 = mel2[:, non_zero_idxs[0]:non_zero_idxs[-1]]
-        mel2 = librosa.power_to_db(mel2, ref=np.max)
-
-        mel2 = cv2.resize(mel2, dsize=(n_mels, n_mels), interpolation=cv2.INTER_CUBIC)
-        mel2 = mel2.flatten()
-        audio_features_np_pos_shift[x_index, :] = mel2
+        extract_mel_to_nd_array(audio_features_np_pos_shift, n_fft, n_mels, sample_rate, x_index, x_row_pos)
 
         x_row_neg = shift(x_row, shift_positions * -1, cval=0)
-        mel3 = librosa.feature.melspectrogram(y=x_row_neg, sr=sample_rate, n_fft=n_fft, n_mels=n_mels)
-        non_zero_idxs = np.argwhere(np.mean(mel3, axis=0) != 0)[:, 0]
-        mel3 = mel3[:, non_zero_idxs[0]:non_zero_idxs[-1]]
-        mel3 = librosa.power_to_db(mel3, ref=np.max)
-        mel3 = cv2.resize(mel3, dsize=(n_mels, n_mels), interpolation=cv2.INTER_CUBIC)
-        mel3 = mel3.flatten()
-        audio_features_np_neg_shift[x_index, :] = mel3
+        extract_mel_to_nd_array(audio_features_np_neg_shift, n_fft, n_mels, sample_rate, x_index, x_row_neg)
+
+        increment_percent = 1.01
+        x_row_rnd = add_random_noise(increment_percent, x_row)
+        extract_mel_to_nd_array(audio_features_np_rnd_1, n_fft, n_mels, sample_rate, x_index, x_row_rnd)
+
+        increment_percent = 1.01
+        x_row_rnd2 = add_random_noise(increment_percent, x_row)
+        extract_mel_to_nd_array(audio_features_np_rnd_2, n_fft, n_mels, sample_rate, x_index, x_row_rnd2)
+
+        increment_percent = 1.02
+        x_row_rnd3 = add_random_noise(increment_percent, x_row)
+        extract_mel_to_nd_array(audio_features_np_rnd_3, n_fft, n_mels, sample_rate, x_index, x_row_rnd3)
 
         x_index += 1
 
-    return audio_features_np, audio_features_np_pos_shift, audio_features_np_neg_shift
+    return output_list
+
+
+def add_random_noise(increment_percent, x_row):
+    rnd_direction = np.random.randint(0, 2, size=x_row.shape[0])
+    rnd_direction[rnd_direction == 0] = -1
+    x_row_rnd_noise = x_row * increment_percent * rnd_direction
+    x_row_rnd = x_row + x_row_rnd_noise
+    return x_row_rnd
+
+
+def extract_mel_to_nd_array(audio_features_np, n_fft, n_mels, sample_rate, x_index, x_row):
+
+    mel1 = librosa.feature.melspectrogram(y=x_row, sr=sample_rate, n_fft=n_fft, n_mels=n_mels)
+    non_zero_idxs = np.argwhere(np.mean(mel1, axis=0) != 0)[:, 0]
+    mel1 = mel1[:, non_zero_idxs[0]:non_zero_idxs[-1]]
+    mel1 = librosa.power_to_db(mel1, ref=np.max)
+    mel1 = cv2.resize(mel1, dsize=(n_mels, n_mels), interpolation=cv2.INTER_CUBIC)
+    mel1 = mel1.flatten()
+    audio_features_np[x_index, :] = mel1
 
 
 def pre_process_fseer_data(audio_files_path, n_mfcc=40, get_emotion_label=True, augment_data=False):
@@ -384,14 +405,17 @@ def pre_process_audio_to_mel_data(audio_files_path, n_mels=128, get_emotion_labe
     if augment_data:
         if not Path(train_data_mel_aug_path).exists():
             print("Augmenting data!")
-            X_train1, X_train2, X_train3 = extract_mel_matrix_from_raw_ndarray_aug_shift(X_train_np, 5000, n_mels)
-            X_train_mel_matrix = np.concatenate((X_train1, X_train2, X_train3), axis=0)
+            all_aug_data = extract_mel_matrix_from_raw_ndarray_aug_shift(X_train_np, 5000, n_mels)
+            X_train_mel_matrix = np.concatenate(all_aug_data, axis=0)
 
             np.save(train_data_mel_aug_path.format(n_mels), X_train_mel_matrix)
-            y_train_encoded = np.concatenate((y_train_encoded, y_train_encoded, y_train_encoded), axis=0)
+            y_multi = X_train_mel_matrix.shape[0] / y_train_encoded.shape[0]
+            y_train_encoded = np.concatenate((y_train_encoded,) * int(y_multi), axis=0)
         else:
             print("Augmented train data found. Loading from npy file.")
             X_train_mel_matrix = np.load(train_data_mel_aug_path)
+            y_multi = X_train_mel_matrix.shape[0] / y_train_encoded.shape[0]
+            y_train_encoded = np.concatenate((y_train_encoded,) * int(y_multi), axis=0)
 
         print("Loading augmented train data successful.")
     else:
