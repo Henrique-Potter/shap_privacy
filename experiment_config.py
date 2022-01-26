@@ -23,7 +23,7 @@ def set_experiment_config(emo_model, gender_model, emo_gt_shap_list, gen_gt_shap
 
     # Building Obfuscation list functions
     # Noise intensity List
-    norm_noise_list = [1 + x / 100 for x in range(10, 100, 3)]
+    norm_noise_list = [1 + x / 100 for x in range(10, 4000, 30)]
     obfuscation_f_list = []
 
     obf_by_gen_topk_class = {'obf_f_handler': general_obf_topk_class,

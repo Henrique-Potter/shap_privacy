@@ -98,7 +98,7 @@ def main():
                                               x_test_gen_cnn)
 
     # Plotting results
-    # plot_obs_f_performance(perf_list)
+    plot_obs_f_performance(perf_list)
 
 
 def export_shap_to_csv(gen_ground_truth_list, model_name):
@@ -171,7 +171,7 @@ def evaluate_obfuscation_function(model_list, obf_f_list, x_model_input):
 
             obf_f_perf_list.append((obf_f_name, metrics_perf_list))
 
-        model_perf_list.append((model_name, obf_f_perf_list))
+        model_perf_list.append((model_dict, obf_f_perf_list))
 
         tf.keras.backend.clear_session()
 
@@ -246,8 +246,8 @@ def avg_by_class_perf(per_class_model_perf_list, perf_reps_nr):
         total_loss = 0
         total_acc = 0
         for by_class_item in per_class_model_perf_list:
-            total_loss += by_class_item[class_index][1][0]
-            total_acc += by_class_item[class_index][1][1]
+            total_loss += by_class_item[class_index][0]
+            total_acc += by_class_item[class_index][1]
 
         final_by_class_perf.append((class_index, [total_loss / perf_reps_nr, total_acc / perf_reps_nr]))
     return final_by_class_perf
@@ -420,7 +420,17 @@ def plot_obs_f_performance(perf_list):
 
     # Iterating over models evals
     for model in perf_list:
-        model_name = model[0]
+
+        priv_class = None
+        util_class = None
+        if model[0]['privacy_target']:
+            priv_target_mdl = model[0]
+            priv_class = priv_target_mdl['priv_class']
+        if model[0]['utility_target']:
+            util_target_mdl = model[0]
+            util_class = util_target_mdl['util_class']
+
+        model_name = model[0]['model_name']
         obf_list = model[1]
         obf_f_index = 0
         # Iterating over obfuscation function's evals
@@ -449,7 +459,7 @@ def plot_obs_f_performance(perf_list):
                 elif metric_name == "by_class":
                     # Parsing by class data
                     parsed_perf_by_class = parse_per_class_perf_data(metric_data)
-                    plot_obs_f_performance_by_class(model_name, obf_f_name, obf_f_index, parsed_perf_by_class)
+                    plot_obs_f_performance_by_class(model_name, obf_f_name, obf_f_index, parsed_perf_by_class, priv_class, util_class)
             obf_f_index += 1
 
     fig, ax = plt.subplots()
@@ -492,7 +502,7 @@ def line_plot_metric_data(lbl, metric_data, obf_f_name, title):
 
 
 # Plots performance data for N number of models with N number of obfuscation functions
-def plot_obs_f_performance_by_class(model_name, obf_f_name, obf_f_index, parsed_perf_by_class):
+def plot_obs_f_performance_by_class(model_name, obf_f_name, obf_f_index, parsed_perf_by_class, priv_class, util_class):
     title_loss = "NN models Loss"
     title_acc = "NN models Accuracy"
     if len(parsed_perf_by_class) == 0:
@@ -501,34 +511,40 @@ def plot_obs_f_performance_by_class(model_name, obf_f_name, obf_f_index, parsed_
     nr_intensities = len(parsed_perf_by_class[0][1])
     x_list = [x for x in range(0, nr_intensities)]
 
-    fig = plt.figure()
+    fig, ax = plt.subplots()
     fig.set_size_inches(17, 10)
     fig.set_dpi(200)
-    gs = fig.add_gridspec(2)
-    ax1 = fig.add_subplot(gs[0])
-    ax2 = fig.add_subplot(gs[1])
+    # gs = fig.add_gridspec(2)
+    # ax1 = fig.add_subplot(gs[0])
+    # ax2 = fig.add_subplot(gs[1])
 
     header = []
     row_data = []
-    for class_nr, class_perf_loss, class_perf_acc in parsed_perf_by_class:
-        lbl = "Class {}".format(class_nr)
 
-        ax1.plot(x_list, class_perf_loss, label=lbl)
-        ax2.plot(x_list, class_perf_acc, label=lbl)
+    for class_nr, class_perf_loss, class_perf_acc in parsed_perf_by_class:
+        if class_nr == priv_class:
+            lbl = "Class {} (Private)".format(class_nr)
+        elif class_nr == util_class:
+            lbl = "Class {} (Utility)".format(class_nr)
+        else:
+            lbl = "Class {}".format(class_nr)
+
+        ax.plot(x_list, class_perf_acc, label=lbl)
         header.append(lbl)
         first, half, last, one_quarter, three_quarters = get_data_samples(class_perf_acc)
         row_data.append([first, one_quarter, half, three_quarters, last])
 
-    ax1.set_title(title_loss)
-    ax1.set_ylabel('loss')
-    ax1.set_xlabel('Noise Intensity level')
-    ax1.legend()
-    ax2.set_title(title_acc)
-    ax2.set_ylabel('accuracy')
-    ax2.set_xlabel('Noise Intensity level')
-    ax2.legend()
-    plt.subplots_adjust(hspace=0.7)
-    plt.title('Model Accuracy and Loss by Obfuscation Intensity for {}'.format(obf_f_name))
+    # ax1.set_title(title_loss)
+    # ax1.set_ylabel('loss')
+    # ax1.set_xlabel('Noise Intensity level')
+    # ax1.legend()
+    ax.set_ylim([0, 1])
+    ax.set_title(title_acc)
+    ax.set_ylabel('accuracy')
+    ax.set_xlabel('Noise Intensity level')
+    ax.legend()
+    # plt.subplots_adjust(hspace=0.7)
+    plt.title('Model Accuracy per obfuscation Intensity for {}'.format(obf_f_name))
     plt.show()
     plt.clf()
 

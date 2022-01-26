@@ -110,6 +110,7 @@ def general_obf_topk_class(x_input, priv_target_mdl, util_target_mdl, curr_y_gt_
     import numpy as np
 
     priv_class = priv_target_mdl['priv_class']
+    priv_gt_y_labels = priv_target_mdl['ground_truth']
     util_class = util_target_mdl['util_class']
     topk_size = kwargs['k']
     topp_size = kwargs['p']
@@ -121,7 +122,7 @@ def general_obf_topk_class(x_input, priv_target_mdl, util_target_mdl, curr_y_gt_
     pclass_shap_mean = np.mean(pclass_shap_list, axis=0)
     pclass_shap_mean_abs = np.mean(np.abs(pclass_shap_list), axis=0)
     p_shap_mean_sorted_idxs = np.argsort(pclass_shap_mean)
-    priv_input = x_input[np.argmax(curr_y_gt_labels, axis=1) == priv_class]
+    priv_input = x_input[np.argmax(priv_gt_y_labels, axis=1) == priv_class]
 
     priv_pear = calculate_correlation(pclass_shap_list, priv_input)
     direction_mask = priv_pear.copy()
@@ -156,13 +157,21 @@ def general_obf_topk_class(x_input, priv_target_mdl, util_target_mdl, curr_y_gt_
     else:
         util_feature_mask = []
 
-    rnd_mask = np.random.randint(1, 10, size=40) / 100 + 1
-    rnd_mask_dir = rnd_mask * direction_mask
-    rnd_mask_dir_lvl = rnd_mask_dir * obf_intensity
+    input_signal_increment = np.zeros(x_input.shape)
+    input_signal_increment[:, priv_feature_mask, 0] = x_input[:, priv_feature_mask, 0]
+    input_signal_increment = input_signal_increment * 0.01 * obf_intensity
 
-    topk_mask = np.ones(feature_size)
-    topk_mask[priv_feature_mask] = rnd_mask_dir_lvl
+    obf_mask_targets = np.ones(feature_size)
 
+    obf_size = priv_feature_mask.shape[0]
+    obf_mask_weights = np.arange(1, 1.1, 0.00255)
+
+    obf_mask_targets[priv_feature_mask] = obf_mask_weights[-obf_size:]
+    obf_mask_targets[priv_feature_mask] = obf_mask_targets[priv_feature_mask] * direction_mask[priv_feature_mask]
+
+    obf_increment = np.abs(input_signal_increment[:, :, 0]) * obf_mask_targets
+
+    x_input[:, :, 0] = x_input[:, :, 0] + obf_increment
 
     return x_input, curr_y_gt_labels
 
