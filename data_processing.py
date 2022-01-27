@@ -1,5 +1,4 @@
 import glob
-from multiprocessing import Process
 
 import numpy as np
 import librosa
@@ -26,27 +25,9 @@ def pre_process_data(audio_files_path, n_mfcc=40, get_emotion_label=True, augmen
 
     audio_raw_df_path = 'data/audio_data_raw_df.pkl'
 
-    import multiprocessing
-    from os import getpid
-
     if not Path(audio_raw_df_path).exists():
 
         print("Loading files and raw audio data.")
-        # audio_files_size = lst_np.shape[0]
-        # queue = multiprocessing.Queue()
-        # processes = []
-        # rets = []
-        #
-        # for index in range(0, 8):
-        #     p = Process(target=extract_raw_audio, args=(queue, audio_files[index]))
-        #     processes.append(p)
-        #     p.start()
-        # for p in processes:
-        #     ret = q.get()  # will block
-        #     rets.append(ret)
-        # for p in processes:
-        #     p.join()
-
 
         audio_raw_df = extract_raw_audio(audio_files)
         print("Loading files and raw audio data successful.")
@@ -101,7 +82,7 @@ def pre_process_data(audio_files_path, n_mfcc=40, get_emotion_label=True, augmen
         print("Loading augmented train data successful.")
     else:
         if not Path(train_data_mfcc_path).exists():
-            X_train_mfcc = extract_mfcc_from_raw_ndarray(X_train_np, n_mfcc)
+            X_train_mfcc = extract_mean_mfcc_from_raw_ndarray(X_train_np, n_mfcc)
             np.save(train_data_mfcc_path, X_train_mfcc)
         else:
             print("Train data found. Loading from npy file.")
@@ -111,7 +92,7 @@ def pre_process_data(audio_files_path, n_mfcc=40, get_emotion_label=True, augmen
     test_data_mfcc_path = 'data/audio_test_data_mfcc{}_np.npy'.format(n_mfcc)
     print("Extracting mfccs from raw nd test audio data split.")
     if not Path(test_data_mfcc_path).exists():
-        X_test_mfcc = extract_mfcc_from_raw_ndarray(X_test_np, n_mfcc)
+        X_test_mfcc = extract_mean_mfcc_from_raw_ndarray(X_test_np, n_mfcc)
         np.save(test_data_mfcc_path, X_test_mfcc)
     else:
         print("Test data found. Loading from npy file.")
@@ -124,7 +105,7 @@ def pre_process_data(audio_files_path, n_mfcc=40, get_emotion_label=True, augmen
     return x_traincnn, y_train_encoded, x_testcnn, y_test_encoded
 
 
-def extract_mfcc_from_raw_ndarray(X_train, n_mfcc):
+def extract_mean_mfcc_from_raw_ndarray(X_train, n_mfcc):
     x_index = 0
     x_mfcc_train = np.ndarray((X_train.shape[0], n_mfcc))
     for x_row in tqdm(X_train):
@@ -151,6 +132,7 @@ def extract_mfcc_matrix_from_raw_ndarray(X_train, n_mfcc, matrix_size):
 
 
 def extract_mfcc_from_raw_ndarray_aug_shift(X_train, n_mfcc, shift_array):
+
     from scipy.ndimage.interpolation import shift
     x_index = 0
     x_mfcc_train = np.ndarray((X_train.shape[0], n_mfcc))
@@ -207,6 +189,73 @@ def extract_mfcc_matrix_from_raw_ndarray_aug_shift(X_train, n_mfcc, shift_array,
         x_index += 1
 
     return audio_features_df.values, audio_features_df_pos_shift.values, audio_features_df_neg_shift.values
+
+
+def extract_mel_matrix_from_raw_ndarray_aug_shift(x_data, shift_positions, n_mels, n_fft=2048):
+    from scipy.ndimage.interpolation import shift
+
+    x_index = 0
+    sample_rate = 22050 * 2
+
+    audio_features_np = np.zeros((x_data.shape[0], n_mels*n_mels))
+    audio_features_np_pos_shift = np.zeros((x_data.shape[0], n_mels*n_mels))
+    audio_features_np_neg_shift = np.zeros((x_data.shape[0], n_mels*n_mels))
+    audio_features_np_rnd_1 = np.zeros((x_data.shape[0], n_mels*n_mels))
+    audio_features_np_rnd_2 = np.zeros((x_data.shape[0], n_mels*n_mels))
+    audio_features_np_rnd_3 = np.zeros((x_data.shape[0], n_mels*n_mels))
+
+    output_list = []
+    output_list.append(audio_features_np)
+    output_list.append(audio_features_np_pos_shift)
+    output_list.append(audio_features_np_neg_shift)
+    output_list.append(audio_features_np_rnd_1)
+    output_list.append(audio_features_np_rnd_2)
+    output_list.append(audio_features_np_rnd_3)
+
+    for x_row in tqdm(x_data):
+
+        extract_mel_to_nd_array(audio_features_np, n_fft, n_mels, sample_rate, x_index, x_row)
+
+        x_row_pos = shift(x_row, shift_positions, cval=0)
+        extract_mel_to_nd_array(audio_features_np_pos_shift, n_fft, n_mels, sample_rate, x_index, x_row_pos)
+
+        x_row_neg = shift(x_row, shift_positions * -1, cval=0)
+        extract_mel_to_nd_array(audio_features_np_neg_shift, n_fft, n_mels, sample_rate, x_index, x_row_neg)
+
+        increment_percent = 1.01
+        x_row_rnd = add_random_noise(increment_percent, x_row)
+        extract_mel_to_nd_array(audio_features_np_rnd_1, n_fft, n_mels, sample_rate, x_index, x_row_rnd)
+
+        increment_percent = 1.01
+        x_row_rnd2 = add_random_noise(increment_percent, x_row)
+        extract_mel_to_nd_array(audio_features_np_rnd_2, n_fft, n_mels, sample_rate, x_index, x_row_rnd2)
+
+        increment_percent = 1.02
+        x_row_rnd3 = add_random_noise(increment_percent, x_row)
+        extract_mel_to_nd_array(audio_features_np_rnd_3, n_fft, n_mels, sample_rate, x_index, x_row_rnd3)
+
+        x_index += 1
+
+    return output_list
+
+
+def add_random_noise(increment_percent, x_row):
+    rnd_direction = np.random.randint(0, 2, size=x_row.shape[0])
+    rnd_direction[rnd_direction == 0] = -1
+    x_row_rnd_noise = x_row * increment_percent * rnd_direction
+    x_row_rnd = x_row + x_row_rnd_noise
+    return x_row_rnd
+
+
+def extract_mel_to_nd_array(audio_features_np, n_fft, n_mels, sample_rate, x_index, x_row):
+
+    mel1 = librosa.feature.melspectrogram(y=x_row, sr=sample_rate, n_fft=n_fft, n_mels=n_mels)
+    non_zero_idxs = np.argwhere(np.mean(mel1, axis=0) != 0)[:, 0]
+    mel1 = mel1[:, non_zero_idxs[0]:non_zero_idxs[-1]]
+    mel1 = librosa.power_to_db(mel1, ref=np.max)
+    mel1 = cv2.resize(mel1, dsize=(n_mels, n_mels), interpolation=cv2.INTER_CUBIC)
+    mel1 = mel1.flatten()
+    audio_features_np[x_index, :] = mel1
 
 
 def pre_process_fseer_data(audio_files_path, n_mfcc=40, get_emotion_label=True, augment_data=False):
@@ -300,13 +349,107 @@ def pre_process_fseer_data(audio_files_path, n_mfcc=40, get_emotion_label=True, 
     return X_train_mfcc, y_train_encoded, X_test_mfcc, y_test_encoded
 
 
+def pre_process_audio_to_mel_data(audio_files_path, n_mels=128, get_emotion_label=True, augment_data=False):
+
+    audio_files = glob.glob("{}/**/*.wav".format(audio_files_path), recursive=True)
+
+    lst = []
+    for full_fname in tqdm(audio_files):
+        lst.append(full_fname)
+
+    lst_np = np.array(lst)
+    uniques = np.unique(lst_np)
+
+    audio_raw_df_path = 'data/audio_data_raw_df.pkl'
+
+    if not Path(audio_raw_df_path).exists():
+        print("Loading files and raw audio data.")
+        audio_raw_df = extract_raw_audio(audio_files)
+        print("Loading files and raw audio data successful.")
+        audio_raw_df.to_pickle(audio_raw_df_path)
+
+    else:
+        print("Loading pre extracted raw audio from pkl file.")
+        audio_raw_df = pd.read_pickle(audio_raw_df_path)
+        print("Loading pre extracted raw audio from pkl file successful.")
+
+    # # # -1 and 1 scaling
+    # for column in tqdm(audiol_features_df.iloc[:, :-2].columns):
+    #     audiol_features_df[column] = audiol_features_df[column] / audiol_features_df[column].abs().max()
+
+    if get_emotion_label:
+        X_train, X_test, y_train, y_test = train_test_split(audio_raw_df.iloc[:, :-2],
+                                                            audio_raw_df.iloc[:, -2:-1],
+                                                            test_size=0.2, random_state=6)
+    else:
+        X_train, X_test, y_train, y_test = train_test_split(audio_raw_df.iloc[:, :-2],
+                                                            audio_raw_df.iloc[:, -1:],
+                                                            test_size=0.2, random_state=6)
+
+    from keras.utils import np_utils
+    from sklearn.preprocessing import LabelEncoder
+
+    X_train_np = np.array(X_train)
+    y_train_np = np.ravel(np.array(y_train))
+    X_test_np = np.array(X_test)
+    y_test_np = np.ravel(np.array(y_test))
+
+    lb = LabelEncoder()
+    y_train_encoded = np_utils.to_categorical(lb.fit_transform(y_train_np))
+    y_test_encoded = np_utils.to_categorical(lb.fit_transform(y_test_np))
+
+    train_data_mel_aug_path = 'data/audio_train_data_mel_matrix{}_aug_np.npy'.format(n_mels)
+    train_data_mel_path = 'data/audio_train_data_mel_matrix{}_np.npy'.format(n_mels)
+
+    print("Extracting mels from raw nd train audio data split.")
+    if augment_data:
+        if not Path(train_data_mel_aug_path).exists():
+            print("Augmenting data!")
+            all_aug_data = extract_mel_matrix_from_raw_ndarray_aug_shift(X_train_np, 5000, n_mels)
+            X_train_mel_matrix = np.concatenate(all_aug_data, axis=0)
+
+            np.save(train_data_mel_aug_path.format(n_mels), X_train_mel_matrix)
+            y_multi = X_train_mel_matrix.shape[0] / y_train_encoded.shape[0]
+            y_train_encoded = np.concatenate((y_train_encoded,) * int(y_multi), axis=0)
+        else:
+            print("Augmented train data found. Loading from npy file.")
+            X_train_mel_matrix = np.load(train_data_mel_aug_path)
+            y_multi = X_train_mel_matrix.shape[0] / y_train_encoded.shape[0]
+            y_train_encoded = np.concatenate((y_train_encoded,) * int(y_multi), axis=0)
+
+        print("Loading augmented train data successful.")
+    else:
+        if not Path(train_data_mel_path).exists():
+            # Ignoring the augmentation [0]
+            X_train_mel_matrix = extract_mel_matrix_from_raw_ndarray_aug_shift(X_train_np, 5000, n_mels)[0]
+            np.save(train_data_mel_path, X_train_mel_matrix)
+        else:
+            print("Train data found. Loading from npy file.")
+            X_train_mel_matrix = np.load(train_data_mel_path, allow_pickle=True)
+        print("Loading train successful.")
+
+    test_data_mfcc_path = 'data/audio_test_data_mel_matrix{}_np.npy'.format(n_mels)
+    print("Extracting mels from raw nd test audio data split.")
+    if not Path(test_data_mfcc_path).exists():
+        # Ignoring the augmentation [0]
+        X_test_mel = extract_mel_matrix_from_raw_ndarray_aug_shift(X_test_np, 5000, n_mels)[0]
+        np.save(test_data_mfcc_path, X_test_mel)
+    else:
+        print("Test data found. Loading from npy file.")
+        X_test_mel = np.load(test_data_mfcc_path, allow_pickle=True)
+    print("Loading test data successful.")
+
+    # x_traincnn = np.expand_dims(X_train_mfcc, axis=2)
+    # x_testcnn = np.expand_dims(X_test_mfcc, axis=2)
+
+    return X_train_mel_matrix, y_train_encoded, X_test_mel, y_test_encoded
+
+
 def extract_raw_audio(audio_files):
 
     audio_raw_df = pd.DataFrame()
     audio_labels_df = pd.DataFrame()
     start_time = time.time()
-
-    lst = []
 
     for full_fname in tqdm(audio_files):
         file_name = Path(full_fname).name
@@ -330,16 +473,6 @@ def extract_raw_audio(audio_files):
     return full_raw_audio_data_df
 
 
-# def extract_mfcc_feature(audio_bin, audio_features_df, audio_labels_df, emo_label, gen_label, sample_rate):
-#     sample_rate = np.array(sample_rate)
-#     mfccs = librosa.feature.mfcc(y=audio_bin, sr=sample_rate, n_mfcc=40).T
-#     mfccs_mean = np.mean(mfccs, axis=0)
-#     # plot_mfccs(full_fname)
-#     audio_labels_df = audio_labels_df.append(Series([emo_label, gen_label]), ignore_index=True)
-#     audio_features_df = audio_features_df.append(Series(mfccs_mean), ignore_index=True)
-#     return audio_features_df, audio_labels_df
-
-
 def plot_mfccs(full_fname):
     import matplotlib.pyplot as plt
     import librosa.display
@@ -361,6 +494,23 @@ def plot_mel_frequencies(full_fname):
     import librosa.display
     fig, ax = plt.subplots()
     audio_bin, sample_rate = librosa.load(full_fname, duration=3, sr=22050 * 2, offset=0.5)
+    sample_rate = np.array(sample_rate)
+    n_fft = 2048
+    mel = librosa.feature.melspectrogram(y=audio_bin, sr=sample_rate, n_fft=n_fft, n_mels=128)
+    mel = librosa.power_to_db(mel, ref=np.max)
+
+    hop_length = 512
+    img = librosa.display.specshow(mel, x_axis='time', ax=ax, hop_length=hop_length, cmap=plt.get_cmap('inferno'))
+    fig.colorbar(img, ax=ax)
+    ax.set(title='Mel')
+    plt.show()
+
+
+def plot_mel_frequencies_from_bin(audio_bin, sample_rate=22050 * 2):
+    import matplotlib.pyplot as plt
+    import librosa.display
+
+    fig, ax = plt.subplots()
     sample_rate = np.array(sample_rate)
     n_fft = 2048
     mel = librosa.feature.melspectrogram(y=audio_bin, sr=sample_rate, n_fft=n_fft, n_mels=128)
@@ -400,7 +550,6 @@ def extract_2d_mel_features(audio_files):
 
         mfccs = librosa.feature.melspectrogram(y=audio_bin, sr=sample_rate, n_mels=128, n_fft=512, hop_length=512,
                                                win_length=512)
-
 
         mfccs = cv2.resize(mfccs, dsize=(64, 64), interpolation=cv2.INTER_CUBIC)
 
