@@ -66,10 +66,10 @@ def main():
     export_shap_to_csv(emo_correct_shap_list, model_name)
 
     # ------------------------ Analyzing Shap values ------------------------
-    mean_std_analysis(gen_ground_truth_list)
-    mean_std_analysis(gen_correct_shap_list)
-    mean_std_analysis(emo_ground_truth_list)
-    mean_std_analysis(emo_correct_shap_list)
+    # mean_std_analysis(gen_ground_truth_list)
+    # mean_std_analysis(gen_correct_shap_list)
+    # mean_std_analysis(emo_ground_truth_list)
+    # mean_std_analysis(emo_correct_shap_list)
 
     # mean_std_analysis(gen_correct_shap_list)
     # mean_std_analysis(emo_correct_shap_list)
@@ -97,11 +97,11 @@ def main():
 
     time.time()
 
-    # Evaluating obfuscation functions
-    perf_list = evaluate_obfuscation_function(gen_correct_shap_list, model_list, obfuscation_f_list, x_test_gen_cnn)
+    # # Evaluating obfuscation functions
+    # perf_list = evaluate_obfuscation_function(gen_correct_shap_list, model_list, obfuscation_f_list, x_test_gen_cnn)
 
-    # Plotting results
-    plot_obs_f_performance(perf_list)
+    # # Plotting results
+    # plot_obs_f_performance(perf_list)
 
 
 def export_shap_to_csv(gen_ground_truth_list, model_name):
@@ -115,9 +115,9 @@ def export_shap_to_csv(gen_ground_truth_list, model_name):
 def extract_shap_values(shap_df_path, model, x_target_data, x_background_data, nr_classes):
     # Extracting SHAP values
     if not Path(shap_df_path).exists():
-        print("Calculating Shap values")
+        print("Calculating Shap values - ", len(x_target_data), len(x_background_data))
         # Generating Shap Values
-        shap_vals, e = extract_shap(model, x_target_data, x_background_data, 150, nr_classes)
+        shap_vals, e = extract_shap(model, x_target_data, x_background_data, 100000, nr_classes)
         np.save(shap_df_path, shap_vals, allow_pickle=True)
     else:
         shap_vals = np.load(shap_df_path, allow_pickle=True)
@@ -404,6 +404,7 @@ def parse_shap_values_by_class(shap_data, y_data):
             correct_shp_vals = np.squeeze(shap_values[0][index], axis=1)
             correct_shap_list[gt_class_nr].append(correct_shp_vals)
 
+    # trim
     processed_gt_matrix_list = clean_outliers(gt_shap_list)
     processed_cr_matrix_list = clean_outliers(correct_shap_list)
 

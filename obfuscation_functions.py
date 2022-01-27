@@ -1,7 +1,8 @@
-
+import numpy as np 
 
 def obfuscate_by_class(shap_values, x_input, y_input_test, obf_intensity, **kwargs):
     class_index = kwargs['class_index']
+    
     shap_values[shap_values < 0] = 0
 
     x_obs_input = x_input.copy()
@@ -21,6 +22,7 @@ def obfuscate_by_class(shap_values, x_input, y_input_test, obf_intensity, **kwar
 
 def obfuscate_by_class(shap_values, x_input, y_input_test, obf_intensity, **kwargs):
     class_index = kwargs['class_index']
+
     shap_values[shap_values < 0] = 0
 
     x_obs_input = x_input.copy()

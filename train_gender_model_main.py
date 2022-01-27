@@ -26,14 +26,14 @@ def main():
 
     print("Starting model training!")
     if not Path(model_path).exists():
-        train_model(model, model_path, 16, x_traincnn, y_train, x_testcnn, y_test, get_emotion_label)
+        train_model(model, model_path, 8, x_traincnn, y_train, x_testcnn, y_test, get_emotion_label)
         test_acc = model.evaluate(x_testcnn, y_test, batch_size=128)
         train_acc = model.evaluate(x_traincnn, y_train, batch_size=128)
     else:
         print("Check point found. Loading existent Gen Model.")
         # Restore the weights
         model = tf.keras.models.load_model(model_path)
-        train_model(model, model_path, 16, x_traincnn, y_train, x_testcnn, y_test, get_emotion_label)
+        train_model(model, model_path, 8, x_traincnn, y_train, x_testcnn, y_test, get_emotion_label)
         test_acc = model.evaluate(x_testcnn, y_test, batch_size=128)
         train_acc = model.evaluate(x_traincnn, y_train, batch_size=128)
 
