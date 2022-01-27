@@ -7,7 +7,7 @@ def set_experiment_config(emo_model, gender_model, emo_gt_shap_list, gen_gt_shap
                       'model': emo_model,
                       'ground_truth': y_test_emo_encoded,
                       'privacy_target': True,
-                      'priv_class': 2,
+                      'priv_class': 1,
                       'shap_values': emo_gt_shap_list,
                       'utility_target': False}
 
@@ -28,7 +28,7 @@ def set_experiment_config(emo_model, gender_model, emo_gt_shap_list, gen_gt_shap
 
     obf_by_gen_topk_class = {'obf_f_handler': general_obf_topk_class,
                           'intensities': norm_noise_list,
-                          'kwargs': {'k': 6, 'force_y_match': 1, 'avg_reps': 1, 'protec_util': 1, 'p': 3},
+                          'kwargs': {'k': 6, 'force_y_match': 1, 'avg_reps': 1, 'protec_util': 1, 'p': 0},
                           'label': 'obf_gen_totk_6_'}
 
     # obf_by_topk_class2 = {'obf_f_handler': obfuscate_by_topk_class,

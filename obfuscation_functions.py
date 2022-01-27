@@ -124,10 +124,13 @@ def general_obf_topk_class(x_input, priv_target_mdl, util_target_mdl, curr_y_gt_
     p_shap_mean_sorted_idxs = np.argsort(pclass_shap_mean)
     priv_input = x_input[np.argmax(priv_gt_y_labels, axis=1) == priv_class]
 
+    # Move the features against the direction that should increase its SHAP value
     priv_pear = calculate_correlation(pclass_shap_list, priv_input)
     direction_mask = priv_pear.copy()
-    direction_mask[priv_pear < 0] = -1
-    direction_mask[priv_pear > 0] = 1
+    # Negative correlation
+    direction_mask[priv_pear < 0] = +1
+    # Positive correlation
+    direction_mask[priv_pear > 0] = -1
 
     umodel = util_target_mdl
     umodel_shap_list = umodel['shap_values']
