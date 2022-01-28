@@ -14,7 +14,8 @@ from tensorflow.keras.models import load_model
 import matplotlib.pyplot as plt
 from data_processing import pre_process_data
 from obfuscation_functions import *
-from util.custom_functions import replace_outliers_by_std, mean_std_analysis, replace_outliers_by_quartile
+from util.custom_functions import replace_outliers_by_std, mean_std_analysis, replace_outliers_by_quartile, \
+    calc_confusion_matrix
 from shap_experiment import extract_shap, extract_shap_values, parse_shap_values_by_class
 
 from keras.layers import Conv2D, MaxPool2D
@@ -49,6 +50,7 @@ def get_obfuscation_model():
 
 @tf.function
 def train_step(model, gender_model, emo_model, mask, emo_train_x, emo_train_y, gen_train_y, optimizer, loss_fn_emo, loss_fn_gen):
+
     with tf.GradientTape() as tape:
         model_mask = model(mask, training=True)#sk
         # model_mask = tf.reshape(model_mask, (emo_train_x.shape[0], 40, 1))
@@ -109,11 +111,18 @@ def validate_model(model, emo_test_dataset_batch, gen_test_dataset_batch):
     print(emo_accuracy.result().numpy())
     print(gen_accuracy.result().numpy())
 
-def train_obfuscation_model(model, emo_train_dataset_batch, gen_train_dataset_batch, emo_test_dataset_batch, gen_test_dataset_batch, obf_gender=True):
-    
+
+def train_obfuscation_model(model, x_test_emo_cnn_scaled, x_train_emo_cnn_scaled, y_test_emo_encoded, y_test_gen_encoded, y_train_emo_encoded,
+        y_train_gen_encoded, obf_gender=True):
+
+    # convert to tensor
+    emo_test_dataset_batch, emo_train_dataset_batch, gen_test_dataset_batch, gen_train_dataset_batch = to_batchdataset(
+        x_test_emo_cnn_scaled, x_train_emo_cnn_scaled, y_test_emo_encoded, y_test_gen_encoded, y_train_emo_encoded,
+        y_train_gen_encoded)
+
     #optimizer = tf.keras.optimizers.Adam()
     #optimizer = tf.keras.optimizers.SGD(lr=0.001, momentum=0.9, decay=0.01)
-    optimizer = tf.keras.optimizers.RMSprop(lr=0.001, clipvalue=1.0, decay=6e-8)
+    optimizer = tf.keras.optimizers.RMSprop(learning_rate=0.001, clipvalue=1.0, decay=6e-8)
 
     loss_fn_emo = tf.keras.losses.CategoricalCrossentropy()
     loss_fn_gen = tf.keras.losses.BinaryCrossentropy()
@@ -134,8 +143,12 @@ def train_obfuscation_model(model, emo_train_dataset_batch, gen_train_dataset_ba
             tf.print(train_loss.result())
             train_loss.reset_states()
             
-            if e%5 == 0:
+            if e % 5 == 0:
+                obf_mask = model.predict(x_test_emo_cnn_scaled)
                 validate_model(model, emo_test_dataset_batch, gen_test_dataset_batch)
+                calc_confusion_matrix(emo_model, x_test_emo_cnn_scaled, y_test_emo_encoded)
+                calc_confusion_matrix(gender_model, x_test_emo_cnn_scaled, y_test_gen_encoded)
+                model.save(obf_model_path)
                 # test 
                 # mask = emo_train_x#*-1
                 # mask = tf.reshape(mask, (emo_train_x.shape[0], number_features))
@@ -145,7 +158,7 @@ def train_obfuscation_model(model, emo_train_dataset_batch, gen_train_dataset_ba
                 # print("epoch:", e, " - ", res)
                 # res = gender_model.evaluate(obfuscated_input, gen_train_y)
                 # print(res)
-            
+
     return model
 
 
@@ -156,10 +169,9 @@ def main():
     x_train_emo_cnn, y_train_emo_encoded, x_test_emo_cnn, y_test_emo_encoded = pre_process_data(audio_files_path, get_emotion_label=True)
     x_train_gen_cnn, y_train_gen_encoded, x_test_gen_cnn, y_test_gen_encoded = pre_process_data(audio_files_path, get_emotion_label=False)
     print("Pre-processing audio files Complete!")
-    
-   
+
     sc = StandardScaler()
-    # reshape
+    # Squeeze extra dimension
     x_train_emo_cnn = np.reshape(x_train_emo_cnn, (x_train_emo_cnn.shape[0], x_train_emo_cnn.shape[1]))
     x_test_emo_cnn = np.reshape(x_test_emo_cnn, (x_test_emo_cnn.shape[0], x_test_emo_cnn.shape[1]))
 
@@ -168,19 +180,6 @@ def main():
 
     # x_train_emo_cnn = sc.fit_transform(x_train_emo_cnn)
     # x_test_emo_cnn = sc.transform(x_test_emo_cnn)
-    
-    # convert to tensor
-    emo_train_dataset = tf.data.Dataset.from_tensor_slices((x_train_emo_cnn_scaled, y_train_emo_encoded))
-    gen_train_dataset = tf.data.Dataset.from_tensor_slices((x_train_emo_cnn_scaled, y_train_gen_encoded)) # same input
-
-    emo_test_dataset = tf.data.Dataset.from_tensor_slices((x_test_emo_cnn_scaled, y_test_emo_encoded))
-    gen_test_dataset = tf.data.Dataset.from_tensor_slices((x_test_emo_cnn_scaled, y_test_gen_encoded))
-
-    emo_train_dataset_batch = emo_train_dataset.batch(batch_size)
-    gen_train_dataset_batch = gen_train_dataset.batch(batch_size)
-
-    emo_test_dataset_batch = emo_train_dataset.batch(batch_size)
-    gen_test_dataset_batch = gen_train_dataset.batch(batch_size)
 
     #if os.path.exists(model_path):
     #    print("Loading existing model.", model_path)
@@ -188,11 +187,32 @@ def main():
     #else:
     model = get_obfuscation_model()
     # exit()
-    model = train_obfuscation_model(model, emo_train_dataset_batch, gen_train_dataset_batch, emo_test_dataset_batch, gen_test_dataset_batch)
-    
+    if not Path(obf_model_path).exists():
+        model = train_obfuscation_model(model,
+        x_test_emo_cnn_scaled, x_train_emo_cnn_scaled, y_test_emo_encoded, y_test_gen_encoded, y_train_emo_encoded,
+        y_train_gen_encoded)
+    else:
+        model = tf.keras.models.load_model(obf_model_path)
+
     print("saving obfuscation model:", model_path)
 
     model.save(model_path)
+
+
+def to_batchdataset(x_test_emo_cnn_scaled, x_train_emo_cnn_scaled, y_test_emo_encoded, y_test_gen_encoded,
+                    y_train_emo_encoded, y_train_gen_encoded):
+
+    emo_train_dataset = tf.data.Dataset.from_tensor_slices((x_train_emo_cnn_scaled, y_train_emo_encoded))
+    gen_train_dataset = tf.data.Dataset.from_tensor_slices((x_train_emo_cnn_scaled, y_train_gen_encoded))  # same input
+    emo_test_dataset = tf.data.Dataset.from_tensor_slices((x_test_emo_cnn_scaled, y_test_emo_encoded))
+    gen_test_dataset = tf.data.Dataset.from_tensor_slices((x_test_emo_cnn_scaled, y_test_gen_encoded))
+    emo_train_dataset_batch = emo_train_dataset.batch(batch_size)
+    gen_train_dataset_batch = gen_train_dataset.batch(batch_size)
+    emo_test_dataset_batch = emo_test_dataset.batch(batch_size)
+    gen_test_dataset_batch = gen_test_dataset.batch(batch_size)
+
+    return emo_test_dataset_batch, emo_train_dataset_batch, gen_test_dataset_batch, gen_train_dataset_batch
+
 
 if __name__ == "__main__":
     #emo_model_path = './emo_checkpoint/emodel_m2_all_aug_5k_16.h5'
@@ -206,24 +226,22 @@ if __name__ == "__main__":
     else:
         model_path = 'emo_checkpoint/model_emo_simple.h5'
 
+    obf_model_path = 'obf_checkpoint/model_obf.h5'
 
     # datasets
     audio_files_path = "./NNDatasets/audio"
     gen_shap_df_path = './data/gen_shap_df.npy'
     emo_shap_df_path = './data/emo_shap_df.npy'
-    
-    # 
+
     print("Loading trained Neural Nets")
     gender_model = load_model(gender_model_path)
     emo_model = load_model(emo_model_path)
 
     batch_size = 4
-    epochs = 100
+    epochs = 40
     max_iter = 50  
     number_features = 40
     #metrics
-    lambd = .9
-
-    
+    lambd = .95
 
     main()

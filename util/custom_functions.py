@@ -30,6 +30,20 @@ def spectrogram_image(y, sr, out, hop_length, n_mels):
     skimage.io.imsave(out, img)
 
 
+# def calculate_and_plot_conf_matrix(model, x_test, y_test, model_id):
+#     from sklearn.metrics import confusion_matrix
+#
+#     y_predict = np.asarray(model.predict(x_test))
+#     true = np.argmax(y_test, axis=1)
+#     pred = np.argmax(y_predict, axis=1)
+#     cm = confusion_matrix(true, pred)
+#
+#     cm = cm.astype('float') / cm.sum(axis=1)[:, np.newaxis]
+#     cm = np.round(cm, 2)
+#
+#     plot_confusion_matrix(cm, model_id, 0)
+
+
 def plot_confusion_matrix(cm_values, model_id, removal_level):
     import matplotlib.pyplot as plt
     import seaborn as sn
@@ -48,7 +62,7 @@ def plot_confusion_matrix(cm_values, model_id, removal_level):
     plt.show()
 
 
-def calc_confusion_matrix(model, x_test, y_test, removal_level):
+def calc_confusion_matrix(model, x_test, y_test, removal_level=0):
     from sklearn.metrics import confusion_matrix
 
     y_predict = np.asarray(model.predict(x_test))

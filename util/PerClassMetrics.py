@@ -1,8 +1,8 @@
-from sklearn.metrics import confusion_matrix
+
 from tensorflow import keras
 import numpy as np
 
-from util.custom_functions import plot_confusion_matrix
+from util.custom_functions import plot_confusion_matrix, calc_confusion_matrix
 
 
 class PerClassMetrics(keras.callbacks.Callback):
@@ -19,26 +19,10 @@ class PerClassMetrics(keras.callbacks.Callback):
     def on_epoch_end(self, epoch, logs):
         import matplotlib.pyplot as plt
 
-        nr_classes = self.validation_data[1].shape[1]
-
         x_test, y_test = self.validation_data[0], self.validation_data[1]
-
-        y_predict = np.asarray(self.model.predict(x_test))
-
-        true = np.argmax(y_test, axis=1)
-        pred = np.argmax(y_predict, axis=1)
-
-        self.cm = confusion_matrix(true, pred)
-        self.cm_raw = self.cm
-        self.cm = self.cm.astype('float') / self.cm.sum(axis=1)[:, np.newaxis]
-        self.cm = np.round(self.cm, 2)
-        self._data.append({
-            'classLevelaccuracy': self.cm.diagonal(),
-        })
-
+        nr_classes = self.validation_data[1].shape[1]
         if epoch % 200 == 0:
-            plot_confusion_matrix(self.cm, self.model_id, 0)
-            # plot_confusion_matrix(self.cm_raw)
+            calc_confusion_matrix(self.model, x_test, y_test, self.model_id)
 
         accs = self.cm.diagonal()
 

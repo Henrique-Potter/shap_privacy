@@ -2,7 +2,7 @@ from pathlib import Path
 import tensorflow as tf
 from data_processing import pre_process_data
 from experiment_neural_nets import build_emo_model2
-from util.custom_functions import train_model
+from util.training_engine import train_model
 
 print("Num GPUs Available: ", len(tf.config.list_physical_devices('GPU')))
 
@@ -23,9 +23,12 @@ def main():
     model = build_emo_model2(x_traincnn)
     model_path = emo_model_path
 
+    epochs = 400
+    batch_size = 128
+
     print("Starting model training!")
     if not Path(model_path).exists():
-        train_model(model, model_path, 128, 400, x_traincnn, y_train, x_testcnn, y_test, get_emotion_label)
+        train_model(model, model_path, batch_size, epochs, x_traincnn, y_train, x_testcnn, y_test, get_emotion_label)
 
         test_acc = model.evaluate(x_testcnn, y_test, batch_size=16)
         train_acc = model.evaluate(x_traincnn, y_train, batch_size=16)
