@@ -113,6 +113,76 @@ def replace_outliers_by_quartile(data, m=1.5):
     return data2
 
 
+def priv_util_plot_perf_data(priv_model_data, util_model_data, title):
+    lbl1 = "Gender ACC (Private)"
+    lbl2 = "Emotion ACC (Utility)"
+
+    nr_intensity_levels = len(priv_model_data)
+    x_list = [x for x in range(1, nr_intensity_levels+1)]
+
+    fig = plt.figure()
+    fig.set_dpi(100)
+
+    plt.plot(x_list, priv_model_data, label=lbl1)
+    plt.plot(x_list, util_model_data, label=lbl2)
+    plt.legend()
+    plt.title(title)
+    plt.xlabel("Epochs")
+    plt.ylabel("Accuracy")
+
+    plt.ylim([0, 1])
+    plt.show()
+
+    return x_list
+
+
+def validate_model(model, emo_model, gender_model, emo_test_dataset_batch, gen_test_dataset_batch):
+    import tensorflow as tf
+    emo_accuracy = tf.keras.metrics.CategoricalAccuracy()
+    gen_accuracy = tf.keras.metrics.BinaryAccuracy()
+
+    for (emo_test_x, emo_test_y), (gen_test_x, gen_test_y) in zip(emo_test_dataset_batch, gen_test_dataset_batch):
+
+        mask = emo_test_x
+        model_mask = model(mask)
+
+        paddings = tf.constant([[0, 0], [0, 40 - model_mask.shape[1]]])
+        final_mask = tf.pad(model_mask, paddings)
+
+        #model_mask = tf.reshape(model_mask, (emo_test_x.shape[0], 40, 1))
+        obfuscated_input = final_mask + emo_test_x
+        #obfuscated_input = tf.reshape(obfuscated_input, (emo_test_x.shape[0], 40, 1))
+
+        # get results
+        preds = emo_model(obfuscated_input, training=False)
+        emo_accuracy.update_state(y_true=emo_test_y, y_pred=preds)
+        preds = gender_model(obfuscated_input, training=False)
+        gen_accuracy.update_state(y_true=gen_test_y, y_pred=preds)
+
+    print(emo_accuracy.result().numpy())
+    print(gen_accuracy.result().numpy())
+
+
+def plot_obf_loss(final_loss_perf):
+    title = "Obfuscator Loss per Epoch (lambda*util_loss - (1-lambd) * priv_loss)"
+
+    nr_intensity_levels = len(final_loss_perf)
+    x_list = [x for x in range(1, nr_intensity_levels+1)]
+
+    fig = plt.figure()
+    fig.set_dpi(100)
+    final_loss_perf = np.abs(np.array(final_loss_perf))
+    plt.plot(x_list, final_loss_perf)
+    # plt.legend()
+    plt.title(title)
+    plt.xlabel("Epochs")
+    plt.ylabel("Loss")
+    plt.yscale("log")
+    plt.show()
+
+    return x_list
+
+
 def show_spectrogram(file):
     sr, x = scipy.io.wavfile.read(file)
     ## Parameters: 10ms step, 30ms window

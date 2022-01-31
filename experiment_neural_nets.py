@@ -1,7 +1,7 @@
 import tensorflow as tf
 
 # from keras import Sequential
-from keras.layers import Conv2D, MaxPool2D
+from keras.layers import Conv2D, MaxPool2D, AlphaDropout
 from tensorflow.keras import optimizers
 from tensorflow.keras.models import Sequential
 from tensorflow.keras.layers import Dense
@@ -150,7 +150,7 @@ def build_fser_emo_model(input_sample):
 	model.add(Dense(7))
 
 	model.add(Activation('softmax'))
-	opt = optimizers.Adam(learning_rate=0.0000005)
+	opt = optimizers.Adam(learning_rate=0.0001)
 	# opt = optimizers.Adam()
 	# opt = optimizers.RMSprop(learning_rate=0.00001, decay=1e-6)
 	# opt = optimizers.RMSprop(learning_rate=0.00005, rho=0.9, epsilon=None, decay=0.0)
@@ -205,3 +205,86 @@ def build_gender_model():
 
 	return model
 
+
+def get_obfuscation_model_relu():
+
+    model = Sequential()
+    model.add(Dense(128, input_shape=(40, ),))
+    model.add(Activation('relu'))
+    model.add(Dropout(0.1))
+    model.add(Dense(128, ))
+    model.add(Activation('relu'))
+    model.add(Dropout(0.1))
+    model.add(Dense(64, ))
+    model.add(Activation('relu'))
+    model.add(Dropout(0.1))
+
+    #model.add(Flatten())
+    model.add(Dense(40, ))
+    model.add(Activation('relu'))
+
+    print(model.summary())
+    return model
+
+
+def get_obfuscation_model():
+
+    model = Sequential()
+    model.add(Dense(128, input_shape=(40, ), kernel_regularizer='l2'))
+    model.add(Activation('tanh'))
+    model.add(Dropout(0.1))
+    model.add(Dense(128, kernel_regularizer='l2'))
+    model.add(Activation('tanh'))
+    model.add(Dropout(0.1))
+    model.add(Dense(64, kernel_regularizer='l2'))
+    model.add(Activation('tanh'))
+    model.add(Dropout(0.1))
+
+    #model.add(Flatten())
+    model.add(Dense(40, kernel_regularizer='l2'))
+    model.add(Activation('tanh'))
+
+    print(model.summary())
+    return model
+
+
+def get_obfuscation_model_swish():
+
+    model = Sequential()
+    model.add(Dense(128, input_shape=(40, ), kernel_regularizer='l1_l2'))
+    model.add(Activation('swish'))
+    model.add(Dropout(0.1))
+    model.add(Dense(128, kernel_regularizer='l1_l2'))
+    model.add(Activation('swish'))
+    model.add(Dropout(0.1))
+    model.add(Dense(64,  kernel_regularizer='l1_l2'))
+    model.add(Activation('swish'))
+    model.add(Dropout(0.1))
+
+    #model.add(Flatten())
+    model.add(Dense(40,  kernel_regularizer='l1_l2'))
+    model.add(Activation('swish'))
+
+    print(model.summary())
+    return model
+
+
+def get_obfuscation_model_selu():
+
+    model = Sequential()
+    model.add(Dense(128, input_shape=(40, ), kernel_initializer='lecun_normal'))
+    model.add(Activation('selu'))
+    model.add(AlphaDropout(0.1))
+    model.add(Dense(128, kernel_initializer='lecun_normal'))
+    model.add(Activation('selu'))
+    model.add(AlphaDropout(0.1))
+    model.add(Dense(64,  kernel_initializer='lecun_normal'))
+    model.add(Activation('selu'))
+    model.add(AlphaDropout(0.1))
+
+    #model.add(Flatten())
+    model.add(Dense(40,  kernel_initializer='lecun_normal'))
+    model.add(Activation('selu'))
+
+    print(model.summary())
+    return model

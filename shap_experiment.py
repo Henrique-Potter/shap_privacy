@@ -484,23 +484,6 @@ def plot_obs_f_performance(perf_list):
     plt.show()
     plt.clf()
 
-
-def line_plot_metric_data(lbl, metric_data, obf_f_name, title):
-
-    nr_intensity_levels = len(metric_data)
-    x_list = [x for x in range(0, nr_intensity_levels)]
-    fig = plt.figure()
-    fig.set_dpi(100)
-    plt.plot(x_list, metric_data, label=lbl)
-    plt.legend()
-    plt.title(title)
-    plt.xlabel('{} intensity level'.format(obf_f_name))
-    # plt.title('{} by Obfuscation Intensity for {}'.format(title, obf_f_name))
-    plt.show()
-    plt.clf()
-    return x_list
-
-
 # Plots performance data for N number of models with N number of obfuscation functions
 def plot_obs_f_performance_by_class(model_name, obf_f_name, obf_f_index, parsed_perf_by_class, priv_class, util_class):
     title_loss = "NN models Loss"

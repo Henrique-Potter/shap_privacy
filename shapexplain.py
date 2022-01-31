@@ -1,5 +1,5 @@
 import time
-import os 
+import os
 
 import pandas as pd
 import shap
@@ -12,10 +12,13 @@ from scipy.cluster.vq import whiten
 from tqdm import tqdm
 from tensorflow.keras.models import load_model
 import matplotlib.pyplot as plt
-from data_processing import pre_process_data
+from data_processing import pre_process_data, to_batchdataset
+from experiment_neural_nets import get_obfuscation_model, get_obfuscation_model_swish, get_obfuscation_model_relu, \
+    get_obfuscation_model_selu
 from obfuscation_functions import *
 from util.custom_functions import replace_outliers_by_std, mean_std_analysis, replace_outliers_by_quartile, \
-    calc_confusion_matrix
+    calc_confusion_matrix, priv_util_plot_perf_data, plot_obf_loss
+
 from shap_experiment import extract_shap, extract_shap_values, parse_shap_values_by_class
 
 from keras.layers import Conv2D, MaxPool2D
@@ -25,193 +28,127 @@ from tensorflow.keras.layers import Dense
 from tensorflow.keras.layers import Flatten, Dropout, Activation
 from sklearn.preprocessing import StandardScaler
 
+from util.training_engine import train_step
+
 tf.compat.v1.enable_v2_behavior()
 
 
-def get_obfuscation_model():
-    
-    model = Sequential()
-    model.add(Dense(128, input_shape=(40, ), kernel_regularizer='l2'))
-    model.add(Activation('tanh'))
-    model.add(Dropout(0.1))
-    model.add(Dense(128, kernel_regularizer='l2'))
-    model.add(Activation('tanh'))
-    model.add(Dropout(0.1))
-    model.add(Dense(64, kernel_regularizer='l2'))
-    model.add(Activation('tanh'))
-    model.add(Dropout(0.1))
-    
-    #model.add(Flatten())
-    model.add(Dense(15, kernel_regularizer='l2'))
-    model.add(Activation('tanh'))
+def train_obfuscation_model(model, x_train_input, x_test_input, y_train_mdl1, y_test_mdl1,
+                            y_train_mdl2, y_test_mdl2, obf_gender=True):
 
-    print(model.summary())
-    return model
+    # Convert to tensor batch iterators
+    emo_tr_batchdt, emo_te_batchdt = to_batchdataset(x_train_input, x_test_input, y_train_mdl1, y_test_mdl1, batch_size)
+    gen_tr_batchdt, gen_te_batchdt = to_batchdataset(x_train_input, x_test_input, y_train_mdl2, y_test_mdl2, batch_size)
 
-@tf.function
-def train_step(model, gender_model, emo_model, mask, emo_train_x, emo_train_y, gen_train_y, optimizer, loss_fn_emo, loss_fn_gen):
-
-    with tf.GradientTape() as tape:
-        model_mask = model(mask, training=True)#sk
-        # model_mask = tf.reshape(model_mask, (emo_train_x.shape[0], 40, 1))
-        emo_train_x = tf.cast(emo_train_x, tf.float32)
-        
-        paddings = tf.constant([[0, 0], [0, 40 - model_mask.shape[1]]])
-        final_mask = tf.pad(model_mask, paddings)
-        
-        #tf.print(final_mask)
-        obfuscated_input = final_mask + emo_train_x #model_mask * emo_train_x + (1 - model_mask) * emo_train_x * noise 
-        #obfuscated_input = tf.reshape(obfuscated_input, (emo_train_x.shape[0], 40, 1))
-        #tf.print(tf.shape(obfuscated_input))
-        
-        # calculate loss 
-        gen_loss_logits = gender_model(obfuscated_input, training=False)
-        gen_loss = loss_fn_gen(gen_train_y, gen_loss_logits)
-
-        emo_loss_logits = emo_model(obfuscated_input, training=False)  
-        emo_loss = loss_fn_emo(emo_train_y, emo_loss_logits)
-        tape.watch(model_mask)
-        
-        if genderPrivacy:
-            loss = (lambd) * emo_loss - (1-lambd) * gen_loss
-        else:
-            loss = (lambd) * gen_loss - (1-lambd) * emo_loss        
-        #loss = -emo_loss + gen_loss tf.math.reduce_mean(tf.math.abs(model_mask)) + 
-
-    gradients = tape.gradient(loss, model.trainable_variables)
-    optimizer.apply_gradients(zip(gradients, model.trainable_variables))
-
-    return loss
-
-
-def validate_model(model, emo_test_dataset_batch, gen_test_dataset_batch):
-    emo_accuracy = tf.keras.metrics.CategoricalAccuracy()
-    gen_accuracy = tf.keras.metrics.BinaryAccuracy()
-
-    for (emo_test_x, emo_test_y), (gen_test_x, gen_test_y) in zip(emo_test_dataset_batch, gen_test_dataset_batch):
-        emo_test_x = tf.cast(emo_test_x, tf.float32)
-        mask = emo_test_x
-        # mask = tf.cast(mask, tf.float32)
-        #mask = tf.reshape(emo_test_x, (emo_test_x.shape[0], number_features))
-        model_mask = model(mask)
-
-        paddings = tf.constant([[0, 0], [0, 40 - model_mask.shape[1]]])
-        final_mask = tf.pad(model_mask, paddings)
-
-        #model_mask = tf.reshape(model_mask, (emo_test_x.shape[0], 40, 1))
-        obfuscated_input = final_mask + emo_test_x 
-        #obfuscated_input = tf.reshape(obfuscated_input, (emo_test_x.shape[0], 40, 1))
-
-        # get results
-        preds = emo_model(obfuscated_input, training=False)
-        emo_accuracy.update_state(y_true=emo_test_y, y_pred=preds)
-        preds = gender_model(obfuscated_input, training=False)
-        gen_accuracy.update_state(y_true=gen_test_y, y_pred=preds)
-
-    print(emo_accuracy.result().numpy())
-    print(gen_accuracy.result().numpy())
-
-
-def train_obfuscation_model(model, x_test_emo_cnn_scaled, x_train_emo_cnn_scaled, y_test_emo_encoded, y_test_gen_encoded, y_train_emo_encoded,
-        y_train_gen_encoded, obf_gender=True):
-
-    # convert to tensor
-    emo_test_dataset_batch, emo_train_dataset_batch, gen_test_dataset_batch, gen_train_dataset_batch = to_batchdataset(
-        x_test_emo_cnn_scaled, x_train_emo_cnn_scaled, y_test_emo_encoded, y_test_gen_encoded, y_train_emo_encoded,
-        y_train_gen_encoded)
-
-    #optimizer = tf.keras.optimizers.Adam()
+    optimizer = tf.keras.optimizers.Adam()
     #optimizer = tf.keras.optimizers.SGD(lr=0.001, momentum=0.9, decay=0.01)
-    optimizer = tf.keras.optimizers.RMSprop(learning_rate=0.001, clipvalue=1.0, decay=6e-8)
+    # optimizer = tf.keras.optimizers.RMSprop(learning_rate=0.001, clipvalue=1.0, decay=6e-8)
 
     loss_fn_emo = tf.keras.losses.CategoricalCrossentropy()
     loss_fn_gen = tf.keras.losses.BinaryCrossentropy()
 
     train_loss = tf.keras.metrics.Mean(name="train_loss")
+    true_wron_train_loss = tf.keras.metrics.Mean(name="train_loss")
+    estimated_train_loss = tf.keras.metrics.Mean(name="train_loss")
+
+    emo_perf = []
+    gen_perf = []
+    final_loss_perf = []
+
     with tf.device('gpu:0'):
-        for e in tqdm(range(epochs)):    
-            for (emo_train_x, emo_train_y), (gen_train_x, gen_train_y) in zip(emo_train_dataset_batch, gen_train_dataset_batch):
-                
-                mask = emo_train_x#*-1
-                mask = tf.cast(mask, tf.float32)
-                #mask = tf.reshape(emo_train_x, (emo_train_x.shape[0], number_features))
-                
-                for i in range(max_iter):
-                    loss = train_step(model, gender_model, emo_model, mask, emo_train_x, emo_train_y, gen_train_y, optimizer, loss_fn_emo, loss_fn_gen)
+        for e in tqdm(range(epochs)):
+            for (emo_train_x, emo_train_y), (gen_train_x, gen_train_y) in zip(emo_tr_batchdt, gen_tr_batchdt):
+                loss, true_wrong_loss, estimated_wrong_loss = train_step(model,
+                                                                          gender_model,
+                                                                          emo_model,
+                                                                          emo_train_x,
+                                                                          gen_train_y,
+                                                                          emo_train_y,
+                                                                          optimizer,
+                                                                          loss_fn_gen,
+                                                                          loss_fn_emo,
+                                                                          lambd,
+                                                                          mdl_target)
+
                 train_loss(loss)
-            
+                true_wron_train_loss(true_wrong_loss)
+                estimated_train_loss(estimated_wrong_loss)
+
+            final_loss_perf.append(loss.numpy())
             tf.print(train_loss.result())
+            tf.print(true_wron_train_loss.result())
+            tf.print(estimated_train_loss.result())
+
             train_loss.reset_states()
-            
-            if e % 5 == 0:
-                obf_mask = model.predict(x_test_emo_cnn_scaled)
-                validate_model(model, emo_test_dataset_batch, gen_test_dataset_batch)
-                calc_confusion_matrix(emo_model, x_test_emo_cnn_scaled, y_test_emo_encoded)
-                calc_confusion_matrix(gender_model, x_test_emo_cnn_scaled, y_test_gen_encoded)
-                model.save(obf_model_path)
-                # test 
-                # mask = emo_train_x#*-1
-                # mask = tf.reshape(mask, (emo_train_x.shape[0], number_features))
-                # obfuscated_input = model(mask)
-                # obfuscated_input = tf.reshape(obfuscated_input, (emo_train_x.shape[0], 40, 1))
-                # res = emo_model.evaluate(obfuscated_input, emo_train_y)
-                # print("epoch:", e, " - ", res)
-                # res = gender_model.evaluate(obfuscated_input, gen_train_y)
-                # print(res)
+            true_wron_train_loss.reset_states()
+            estimated_train_loss.reset_states()
+
+            obf_input = obfuscate_input(model, x_test_input)
+            mdl1_perf = emo_model.evaluate(obf_input, y_test_mdl1, verbose=0)
+            mdl2_perf = gender_model.evaluate(obf_input, y_test_mdl2, verbose=0)
+            emo_perf.append(mdl1_perf[1])
+            gen_perf.append(mdl2_perf[1])
+
+            # Plotting results.
+            if e % 50 == 10:
+                priv_util_plot_perf_data(gen_perf, emo_perf, "NN Obfuscator Performance")
+                plot_obf_loss(final_loss_perf)
+            if e % 100 == 90:
+                calc_confusion_matrix(emo_model, obf_input, y_test_mdl1)
+                calc_confusion_matrix(gender_model, obf_input, y_test_mdl2)
+                # model.save(obf_model_path)
 
     return model
 
 
+def obfuscate_input(model, x_test_input):
+    # Generating the mask
+    obf_masks = model.predict(x_test_input)
+    nr_features = x_test_input[0].shape[0]
+    mask_size = obf_masks[0].shape[0]
+    padded_masks = np.pad(obf_masks, [(0, 0), (0, nr_features - mask_size)], mode='constant',
+                          constant_values=0)
+    # Adding the mask to the input
+    obf_input = x_test_input + padded_masks
+    return obf_input
+
+
 def main():
-    
+
     # get dataset
     print("Pre-processing audio files!")
     x_train_emo_cnn, y_train_emo_encoded, x_test_emo_cnn, y_test_emo_encoded = pre_process_data(audio_files_path, get_emotion_label=True)
     x_train_gen_cnn, y_train_gen_encoded, x_test_gen_cnn, y_test_gen_encoded = pre_process_data(audio_files_path, get_emotion_label=False)
     print("Pre-processing audio files Complete!")
 
-    sc = StandardScaler()
+    # Sanity check. These summations should be 0.
+    train_equal_sum = np.sum(x_train_emo_cnn != x_train_gen_cnn)
+    test_equal_sum = np.sum(x_test_emo_cnn != x_test_gen_cnn)
+
+    if train_equal_sum + test_equal_sum != 0:
+        raise Exception('Train and Test sets for different models do not match')
+
     # Squeeze extra dimension
-    x_train_emo_cnn = np.reshape(x_train_emo_cnn, (x_train_emo_cnn.shape[0], x_train_emo_cnn.shape[1]))
-    x_test_emo_cnn = np.reshape(x_test_emo_cnn, (x_test_emo_cnn.shape[0], x_test_emo_cnn.shape[1]))
+    x_train_emo_cnn = np.squeeze(x_train_emo_cnn)
+    x_test_emo_cnn = np.squeeze(x_test_emo_cnn)
 
-    x_train_emo_cnn_scaled = sc.fit_transform(x_train_emo_cnn)
-    x_test_emo_cnn_scaled = sc.transform(x_test_emo_cnn)
+    # Scaling and setting type to float32
+    sc = StandardScaler()
+    x_train_emo_cnn_scaled = sc.fit_transform(x_train_emo_cnn).astype(np.float32)
+    x_test_emo_cnn_scaled = sc.transform(x_test_emo_cnn).astype(np.float32)
 
-    # x_train_emo_cnn = sc.fit_transform(x_train_emo_cnn)
-    # x_test_emo_cnn = sc.transform(x_test_emo_cnn)
+    model = get_obfuscation_model_selu()
 
-    #if os.path.exists(model_path):
-    #    print("Loading existing model.", model_path)
-    #    model = tf.keras.models.load_model(model_path)
-    #else:
-    model = get_obfuscation_model()
-    # exit()
     if not Path(obf_model_path).exists():
         model = train_obfuscation_model(model,
-        x_test_emo_cnn_scaled, x_train_emo_cnn_scaled, y_test_emo_encoded, y_test_gen_encoded, y_train_emo_encoded,
-        y_train_gen_encoded)
+                                        x_train_emo_cnn_scaled,
+                                        x_test_emo_cnn_scaled,
+                                        y_train_emo_encoded,
+                                        y_test_emo_encoded,
+                                        y_train_gen_encoded,
+                                        y_test_gen_encoded)
     else:
         model = tf.keras.models.load_model(obf_model_path)
-
-    print("saving obfuscation model:", model_path)
-
-    model.save(model_path)
-
-
-def to_batchdataset(x_test_emo_cnn_scaled, x_train_emo_cnn_scaled, y_test_emo_encoded, y_test_gen_encoded,
-                    y_train_emo_encoded, y_train_gen_encoded):
-
-    emo_train_dataset = tf.data.Dataset.from_tensor_slices((x_train_emo_cnn_scaled, y_train_emo_encoded))
-    gen_train_dataset = tf.data.Dataset.from_tensor_slices((x_train_emo_cnn_scaled, y_train_gen_encoded))  # same input
-    emo_test_dataset = tf.data.Dataset.from_tensor_slices((x_test_emo_cnn_scaled, y_test_emo_encoded))
-    gen_test_dataset = tf.data.Dataset.from_tensor_slices((x_test_emo_cnn_scaled, y_test_gen_encoded))
-    emo_train_dataset_batch = emo_train_dataset.batch(batch_size)
-    gen_train_dataset_batch = gen_train_dataset.batch(batch_size)
-    emo_test_dataset_batch = emo_test_dataset.batch(batch_size)
-    gen_test_dataset_batch = gen_test_dataset.batch(batch_size)
-
-    return emo_test_dataset_batch, emo_train_dataset_batch, gen_test_dataset_batch, gen_train_dataset_batch
 
 
 if __name__ == "__main__":
@@ -237,11 +174,12 @@ if __name__ == "__main__":
     gender_model = load_model(gender_model_path)
     emo_model = load_model(emo_model_path)
 
-    batch_size = 4
-    epochs = 40
-    max_iter = 50  
+    batch_size = 16
+    epochs = 500
+    max_iter = 1
     number_features = 40
     #metrics
-    lambd = .95
+    lambd = .8
+    mdl_target = 1
 
     main()

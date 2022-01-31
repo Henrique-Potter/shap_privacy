@@ -1,7 +1,7 @@
 import tensorflow as tf
 from data_processing import *
 from experiment_neural_nets import build_fser_emo_model
-from util.trainning_engine import train_model
+from util.training_engine import train_model
 
 print("Num GPUs Available: ", len(tf.config.list_physical_devices('GPU')))
 
@@ -29,7 +29,7 @@ def main():
 
     print("Starting model training!")
     if not Path(model_path).exists():
-        train_model(model, model_path, 64, 100, x_traincnn, y_train, x_testcnn, y_test, get_emotion_label)
+        train_model(model, model_path, 64, 1000, x_traincnn, y_train, x_testcnn, y_test, get_emotion_label)
         train_model(model, model_path, 16, 400, x_traincnn, y_train, x_testcnn, y_test, get_emotion_label)
 
         test_acc = model.evaluate(x_testcnn, y_test, batch_size=128)
