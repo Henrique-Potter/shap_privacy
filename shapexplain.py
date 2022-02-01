@@ -48,8 +48,6 @@ def train_obfuscation_model(model, x_train_input, x_test_input, y_train_mdl1, y_
     loss_fn_gen = tf.keras.losses.BinaryCrossentropy()
 
     train_loss = tf.keras.metrics.Mean(name="train_loss")
-    true_wron_train_loss = tf.keras.metrics.Mean(name="train_loss")
-    estimated_train_loss = tf.keras.metrics.Mean(name="train_loss")
 
     emo_perf = []
     gen_perf = []
@@ -58,30 +56,24 @@ def train_obfuscation_model(model, x_train_input, x_test_input, y_train_mdl1, y_
     with tf.device('gpu:0'):
         for e in tqdm(range(epochs)):
             for (emo_train_x, emo_train_y), (gen_train_x, gen_train_y) in zip(emo_tr_batchdt, gen_tr_batchdt):
-                loss, true_wrong_loss, estimated_wrong_loss = train_step(model,
-                                                                          gender_model,
-                                                                          emo_model,
-                                                                          emo_train_x,
-                                                                          gen_train_y,
-                                                                          emo_train_y,
-                                                                          optimizer,
-                                                                          loss_fn_gen,
-                                                                          loss_fn_emo,
-                                                                          lambd,
-                                                                          mdl_target)
+                loss  = train_step(model,
+                                   gender_model,
+                                   emo_model,
+                                   emo_train_x,
+                                   gen_train_y,
+                                   emo_train_y,
+                                   optimizer,
+                                   loss_fn_gen,
+                                   loss_fn_emo,
+                                   lambd,
+                                   mdl_target)
 
                 train_loss(loss)
-                true_wron_train_loss(true_wrong_loss)
-                estimated_train_loss(estimated_wrong_loss)
 
             final_loss_perf.append(loss.numpy())
             tf.print(train_loss.result())
-            tf.print(true_wron_train_loss.result())
-            tf.print(estimated_train_loss.result())
 
             train_loss.reset_states()
-            true_wron_train_loss.reset_states()
-            estimated_train_loss.reset_states()
 
             obf_input = obfuscate_input(model, x_test_input)
             mdl1_perf = emo_model.evaluate(obf_input, y_test_mdl1, verbose=0)
@@ -137,7 +129,7 @@ def main():
     x_train_emo_cnn_scaled = sc.fit_transform(x_train_emo_cnn).astype(np.float32)
     x_test_emo_cnn_scaled = sc.transform(x_test_emo_cnn).astype(np.float32)
 
-    model = get_obfuscation_model_selu()
+    model = get_obfuscation_model()
 
     if not Path(obf_model_path).exists():
         model = train_obfuscation_model(model,
@@ -174,7 +166,7 @@ if __name__ == "__main__":
     gender_model = load_model(gender_model_path)
     emo_model = load_model(emo_model_path)
 
-    batch_size = 16
+    batch_size = 64
     epochs = 500
     max_iter = 1
     number_features = 40

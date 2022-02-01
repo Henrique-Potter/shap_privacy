@@ -28,7 +28,7 @@ def train_model(model, model_path, batch, epoch, x_traincnn, y_train, x_testcnn,
     plt.show()
 
 
-# @tf.function
+@tf.function
 def train_step(model, priv_mdl, util_mdl, x_input, y_priv_mdl, y_util_mdl, optimizer, priv_mdl_loss_fn, util_mdl_loss_fn, lambd, mdl_tgt_id):
 
     with tf.GradientTape() as tape:
@@ -40,61 +40,50 @@ def train_step(model, priv_mdl, util_mdl, x_input, y_priv_mdl, y_util_mdl, optim
         paddings = tf.constant([[0, 0], [0, 40 - model_mask.shape[1]]])
         final_mask = tf.pad(model_mask, paddings)
 
+        # Applying the mask to the input
         obfuscated_input = final_mask + x_input
-
-        #model_mask * emo_train_x + (1 - model_mask) * emo_train_x * noise
-        #obfuscated_input = tf.reshape(obfuscated_input, (emo_train_x.shape[0], 40, 1))
-        #tf.print(tf.shape(obfuscated_input))
-
-        wrong_y = tf.fill(y_priv_mdl.shape, 0.5)
 
         # Calculating loss
         priv_mdl_logits = priv_mdl(obfuscated_input, training=False)
-        priv_mdl_w_loss = priv_mdl_loss_fn(wrong_y, priv_mdl_logits)
-        true_wrong_loss = priv_mdl_loss_fn(tf.cast(wrong_y, tf.float64), tf.cast(priv_mdl_logits, tf.float64))
-
-        priv_mdl_true_loss = priv_mdl_loss_fn(tf.cast(y_priv_mdl, tf.float64), tf.cast(priv_mdl_logits, tf.float64))
-
-        # Estimating original logits
-        cross_entropy = tf.divide(priv_mdl_true_loss, batch_size)
-        highest_logit_value = tf.pow(2, -tf.cast(cross_entropy, tf.float64))
-        left_over = 1 - highest_logit_value
-        other_logits_val = left_over/nr_priv_classes
-        np_estimanted_logits = np.full((nr_priv_classes), other_logits_val.numpy())
-        random_chance_vector = tf.fill(nr_priv_classes, 1/nr_priv_classes)
-        np_estimanted_logits[0] = 1.0
-        estimante_model_logit = tf.constant(np_estimanted_logits, dtype=tf.float64)
-
-        estimated_wrong_loss = priv_mdl_loss_fn(wrong_y, estimante_model_logit)
-
-        priv_mdla_logits = priv_mdl(x_input, training=False)
-        priv_mdla_loss = priv_mdl_loss_fn(wrong_y, priv_mdla_logits)
+        priv_mdl_w_loss = util_mdl_loss_fn(y_priv_mdl, priv_mdl_logits)
+        # true_wrong_loss = priv_mdl_loss_fn(tf.cast(wrong_y, tf.float64), tf.cast(priv_mdl_logits, tf.float64))
+        # priv_mdl_true_loss = priv_mdl_loss_fn(tf.cast(y_priv_mdl, tf.float64), tf.cast(priv_mdl_logits, tf.float64))
 
         util_mdl_logits = util_mdl(obfuscated_input, training=False)
         util_mdl_loss = util_mdl_loss_fn(y_util_mdl, util_mdl_logits)
 
-        util_mdl_anchor_logits = util_mdl(x_input, training=False)
-        util_mdl_anchor_loss = util_mdl_loss_fn(y_util_mdl, util_mdl_anchor_logits)
         tape.watch(model_mask)
 
-        alpha = 0
         if mdl_tgt_id:
-
-            final_loss = util_mdl_loss + tf.cast(estimated_wrong_loss, tf.float32)
-
-            # print((1-lambd) * priv_mdl_loss)
-            # print(lambd * util_mdl_loss)
+            wrong_y = tf.fill(y_priv_mdl.shape, 0.5)
+            priv_mdl_w_loss = priv_mdl_loss_fn(wrong_y, priv_mdl_logits)
         else:
-            loss = lambd * priv_mdl_loss - (1 - lambd) * util_mdl_loss
+            wrong_y = tf.fill(y_util_mdl.shape, 1/nr_priv_classes)
+            util_mdl_loss = util_mdl_loss_fn(wrong_y, util_mdl_logits)
+            # loss = lambd * priv_mdl_loss - (1 - lambd) * util_mdl_loss
 
+        final_loss = util_mdl_loss + priv_mdl_w_loss
         loss = final_loss
-
-        #loss = -emo_loss + gen_loss tf.math.reduce_mean(tf.math.abs(model_mask)) +
 
     gradients = tape.gradient(loss, model.trainable_variables)
     optimizer.apply_gradients(zip(gradients, model.trainable_variables))
 
-    return loss, true_wrong_loss, estimated_wrong_loss
+    return loss
+
+
+def estimate_logits_from_loss(batch_size, nr_priv_classes, priv_mdl_loss_fn, priv_mdl_true_loss, wrong_y):
+
+    cross_entropy = tf.divide(priv_mdl_true_loss, batch_size)
+    highest_logit_value = tf.pow(2, -tf.cast(cross_entropy, tf.float64))
+    left_over = 1 - highest_logit_value
+    other_logits_val = left_over / nr_priv_classes
+    np_estimanted_logits = np.full((nr_priv_classes), other_logits_val.numpy())
+    random_chance_vector = tf.fill(nr_priv_classes, 1 / nr_priv_classes)
+    np_estimanted_logits[0] = 1.0
+    estimante_model_logit = tf.constant(np_estimanted_logits, dtype=tf.float64)
+    estimated_wrong_loss = priv_mdl_loss_fn(wrong_y, estimante_model_logit)
+
+    return estimated_wrong_loss
 
 
 def triplet_loss(alpha, lambd, priv_mdl_loss, priv_mdla_loss, util_mdl_anchor_loss, util_mdl_loss):
