@@ -38,7 +38,7 @@ def train_step(model, priv_mdl, util_mdl, x_input, y_priv_mdl, y_util_mdl, optim
         nr_priv_classes = y_priv_mdl.shape[1]
         model_mask = model(x_input, training=True)
 
-        paddings = tf.constant([[0, 0], [0, feature_sz - model_mask.shape[1]]])
+        paddings = tf.constant([[0, 0], [0, 40 - model_mask.shape[1]]])
         final_mask = tf.pad(model_mask, paddings)
 
         # Applying the mask to the input
