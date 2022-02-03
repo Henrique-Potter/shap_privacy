@@ -33,11 +33,12 @@ def train_step(model, priv_mdl, util_mdl, x_input, y_priv_mdl, y_util_mdl, optim
 
     with tf.GradientTape() as tape:
 
-        batch_size = x_input.shape[0]
+        batch_sz = x_input.shape[0]
+        feature_sz = x_input.shape[1]
         nr_priv_classes = y_priv_mdl.shape[1]
         model_mask = model(x_input, training=True)
 
-        paddings = tf.constant([[0, 0], [0, 40 - model_mask.shape[1]]])
+        paddings = tf.constant([[0, 0], [0, feature_sz - model_mask.shape[1]]])
         final_mask = tf.pad(model_mask, paddings)
 
         # Applying the mask to the input
@@ -50,19 +51,27 @@ def train_step(model, priv_mdl, util_mdl, x_input, y_priv_mdl, y_util_mdl, optim
         # priv_mdl_true_loss = priv_mdl_loss_fn(tf.cast(y_priv_mdl, tf.float64), tf.cast(priv_mdl_logits, tf.float64))
 
         util_mdl_logits = util_mdl(obfuscated_input, training=False)
+        # umanual_logit_smoothing = tf.fill(y_util_mdl.shape, 0.00001)
+        # util_mdl_logits2 = tf.add(util_mdl_logits, umanual_logit_smoothing)
+
         util_mdl_loss = util_mdl_loss_fn(y_util_mdl, util_mdl_logits)
+        # util_mdl_loss2 = util_mdl_loss_fn(y_util_mdl, util_mdl_logits2)
 
         tape.watch(model_mask)
 
         if mdl_tgt_id:
             wrong_y = tf.fill(y_priv_mdl.shape, 0.5)
+            # priv_mdl_w_loss = priv_mdl_loss_fn(wrong_y, priv_mdl_logits)
+
+            # manual_logit_smoothing = tf.fill(y_priv_mdl.shape, 0.00001)
+            # priv_mdl_logits2 = tf.add(priv_mdl_logits, manual_logit_smoothing)
             priv_mdl_w_loss = priv_mdl_loss_fn(wrong_y, priv_mdl_logits)
         else:
             wrong_y = tf.fill(y_util_mdl.shape, 1/nr_priv_classes)
             util_mdl_loss = util_mdl_loss_fn(wrong_y, util_mdl_logits)
             # loss = lambd * priv_mdl_loss - (1 - lambd) * util_mdl_loss
 
-        final_loss = util_mdl_loss + priv_mdl_w_loss
+        final_loss = lambd * util_mdl_loss + (1-lambd) * priv_mdl_w_loss
         loss = final_loss
 
     gradients = tape.gradient(loss, model.trainable_variables)

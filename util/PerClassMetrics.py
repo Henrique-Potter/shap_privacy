@@ -24,11 +24,11 @@ class PerClassMetrics(keras.callbacks.Callback):
         if epoch % 200 == 0:
             calc_confusion_matrix(self.model, x_test, y_test, self.model_id)
 
-        accs = self.cm.diagonal()
-
-        print("\n")
-        for cl in range(nr_classes):
-            print(" " * 40 + "C{}: {}".format(cl, accs[cl]))
+        # accs = self.cm.diagonal()
+        #
+        # print("\n")
+        # for cl in range(nr_classes):
+        #     print(" " * 40 + "C{}: {}".format(cl, accs[cl]))
 
         return
 

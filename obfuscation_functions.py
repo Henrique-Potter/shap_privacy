@@ -142,7 +142,6 @@ def general_obf_topk_class(x_input, priv_target_mdl, util_target_mdl, curr_y_gt_
         # Get the Top K is positive
         priv_feature_mask = p_shap_mean_sorted_idxs[-topk_size:]
         util_feature_mask = u_shap_mean_sorted_idxs[-topp_size:]
-
     else:
         # Get the Bottom K if negative
         priv_feature_mask = p_shap_mean_sorted_idxs[:-topk_size]

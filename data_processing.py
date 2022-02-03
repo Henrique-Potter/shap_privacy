@@ -20,9 +20,6 @@ def pre_process_data(audio_files_path, n_mfcc=40, get_emotion_label=True, augmen
     for full_fname in tqdm(audio_files):
         lst.append(full_fname)
 
-    lst_np = np.array(lst)
-    uniques = np.unique(lst_np)
-
     audio_raw_df_path = 'data/audio_data_raw_df.pkl'
 
     if not Path(audio_raw_df_path).exists():
@@ -37,10 +34,6 @@ def pre_process_data(audio_files_path, n_mfcc=40, get_emotion_label=True, augmen
         print("Loading pre extracted raw audio from pkl file.")
         audio_raw_df = pd.read_pickle(audio_raw_df_path)
         print("Loading pre extracted raw audio from pkl file successful.")
-
-    # # # -1 and 1 scaling
-    # for column in tqdm(audiol_features_df.iloc[:, :-2].columns):
-    #     audiol_features_df[column] = audiol_features_df[column] / audiol_features_df[column].abs().max()
 
     if get_emotion_label:
         X_train, X_test, y_train, y_test = train_test_split(audio_raw_df.iloc[:, :-2],
@@ -63,21 +56,24 @@ def pre_process_data(audio_files_path, n_mfcc=40, get_emotion_label=True, augmen
     y_train_encoded = np_utils.to_categorical(lb.fit_transform(y_train_np))
     y_test_encoded = np_utils.to_categorical(lb.fit_transform(y_test_np))
 
-    train_data_mfcc_aug_path = 'data/audio_train_data_mfcc{}_aug_np.npy'.format(n_mfcc)
+    train_data_mfcc_aug_path = 'data/audio_train_data_mfcc{}_aug_np_v2.npy'.format(n_mfcc)
     train_data_mfcc_path = 'data/audio_train_data_mfcc{}_np.npy'.format(n_mfcc)
 
     print("Extracting mfccs from raw nd train audio data split.")
     if augment_data:
         if not Path(train_data_mfcc_aug_path).exists():
             print("Augmenting data!")
-            X_train1, X_train2, X_train3 = extract_mfcc_from_raw_ndarray_aug_shift(X_train_np, n_mfcc, 5000)
-            X_train_mfcc = np.concatenate((X_train1, X_train2, X_train3), axis=0)
+            all_aug_data = extract_mfcc_from_raw_ndarray_aug_shift(X_train_np, n_mfcc, 5000)
+            X_train_mfcc = np.concatenate(all_aug_data, axis=0)
 
             np.save(train_data_mfcc_aug_path.format(n_mfcc), X_train_mfcc)
-            y_train_encoded = np.concatenate((y_train_encoded, y_train_encoded, y_train_encoded), axis=0)
+            y_multi = X_train_mfcc.shape[0] / y_train_encoded.shape[0]
+            y_train_encoded = np.concatenate((y_train_encoded,) * int(y_multi), axis=0)
         else:
             print("Augmented train data found. Loading from npy file.")
             X_train_mfcc = np.load(train_data_mfcc_aug_path)
+            y_multi = X_train_mfcc.shape[0] / y_train_encoded.shape[0]
+            y_train_encoded = np.concatenate((y_train_encoded,) * int(y_multi), axis=0)
 
         print("Loading augmented train data successful.")
     else:
@@ -89,7 +85,7 @@ def pre_process_data(audio_files_path, n_mfcc=40, get_emotion_label=True, augmen
             X_train_mfcc = np.load(train_data_mfcc_path)
         print("Loading train successful.")
 
-    test_data_mfcc_path = 'data/audio_test_data_mfcc{}_np.npy'.format(n_mfcc)
+    test_data_mfcc_path = 'data/audio_test_data_mfcc{}_np_2.npy'.format(n_mfcc)
     print("Extracting mfccs from raw nd test audio data split.")
     if not Path(test_data_mfcc_path).exists():
         X_test_mfcc = extract_mean_mfcc_from_raw_ndarray(X_test_np, n_mfcc)
@@ -99,20 +95,23 @@ def pre_process_data(audio_files_path, n_mfcc=40, get_emotion_label=True, augmen
         X_test_mfcc = np.load(test_data_mfcc_path)
     print("Loading test data successful.")
 
-    x_traincnn = np.expand_dims(X_train_mfcc, axis=2)
-    x_testcnn = np.expand_dims(X_test_mfcc, axis=2)
+    # x_traincnn = np.expand_dims(X_train_mfcc, axis=2)
+    # x_testcnn = np.expand_dims(X_test_mfcc, axis=2)
 
-    return x_traincnn, y_train_encoded, x_testcnn, y_test_encoded
+    return X_train_mfcc, y_train_encoded, X_test_mfcc, y_test_encoded
 
 
 def extract_mean_mfcc_from_raw_ndarray(X_train, n_mfcc):
     x_index = 0
-    x_mfcc_train = np.ndarray((X_train.shape[0], n_mfcc))
-    for x_row in tqdm(X_train):
-        mfccs = librosa.feature.mfcc(y=x_row, sr=22050 * 2, n_mfcc=n_mfcc).T
-        mfccs_mean = np.mean(mfccs, axis=0)
 
-        x_mfcc_train[x_index, :] = mfccs_mean
+    # feature_sz = n_mfcc * 3 + 1
+    feature_sz = n_mfcc
+
+    x_mfcc_train = np.ndarray((X_train.shape[0], feature_sz))
+    for x_row in tqdm(X_train):
+
+        extract_mfcc(x_mfcc_train, n_mfcc, x_index, x_row)
+
         x_index += 1
 
     return x_mfcc_train
@@ -131,32 +130,60 @@ def extract_mfcc_matrix_from_raw_ndarray(X_train, n_mfcc, matrix_size):
     return x_mfcc_train.values
 
 
-def extract_mfcc_from_raw_ndarray_aug_shift(X_train, n_mfcc, shift_array):
+def extract_mfcc_from_raw_ndarray_aug_shift(x_data, n_mfcc, shift_array):
 
     from scipy.ndimage.interpolation import shift
     x_index = 0
-    x_mfcc_train = np.ndarray((X_train.shape[0], n_mfcc))
-    x_mfcc_train_pos_shift = np.ndarray((X_train.shape[0], n_mfcc))
-    x_mfcc_train_neg_shift = np.ndarray((X_train.shape[0], n_mfcc))
-    for x_row in tqdm(X_train):
 
-        mfccs1 = librosa.feature.mfcc(y=x_row, sr=22050 * 2, n_mfcc=n_mfcc).T
-        mfccs_mean1 = np.mean(mfccs1, axis=0)
-        x_mfcc_train[x_index, :] = mfccs_mean1
+    # feature_sz = n_mfcc * 3 + 1
+    feature_sz = n_mfcc
+
+    x_mfcc_train = np.ndarray((x_data.shape[0], feature_sz))
+    x_mfcc_train_pos_shift = np.ndarray((x_data.shape[0], feature_sz))
+    x_mfcc_train_neg_shift = np.ndarray((x_data.shape[0], feature_sz))
+
+    # audio_features_np_rnd_1 = np.zeros((x_data.shape[0], feature_sz))
+    # audio_features_np_rnd_2 = np.zeros((x_data.shape[0], feature_sz))
+    # audio_features_np_rnd_3 = np.zeros((x_data.shape[0], feature_sz))
+
+    for x_row in tqdm(x_data):
+
+        extract_mfcc(x_mfcc_train, n_mfcc, x_index, x_row)
 
         x_row_pos = shift(x_row, shift_array, cval=0)
-        mfccs2 = librosa.feature.mfcc(y=x_row_pos, sr=22050 * 2, n_mfcc=n_mfcc).T
-        mfccs_mean2 = np.mean(mfccs2, axis=0)
-        x_mfcc_train_pos_shift[x_index, :] = mfccs_mean2
+        extract_mfcc(x_mfcc_train_pos_shift, n_mfcc, x_index, x_row_pos)
 
         x_row_neg = shift(x_row, shift_array * -1, cval=0)
-        mfccs3 = librosa.feature.mfcc(y=x_row_neg, sr=22050 * 2, n_mfcc=n_mfcc).T
-        mfccs_mean3 = np.mean(mfccs3, axis=0)
-        x_mfcc_train_neg_shift[x_index, :] = mfccs_mean3
+        extract_mfcc(x_mfcc_train_neg_shift, n_mfcc, x_index, x_row_neg)
+
+        # increment_percent = 0.03
+        # x_row_rnd = add_random_noise(increment_percent, x_row)
+        # extract_mfcc(audio_features_np_rnd_1, n_mfcc, x_index, x_row_rnd)
+        #
+        # increment_percent = 0.03
+        # x_row_rnd2 = add_random_noise(increment_percent, x_row)
+        # extract_mfcc(audio_features_np_rnd_2, n_mfcc, x_index, x_row_rnd2)
 
         x_index += 1
 
-    return x_mfcc_train, x_mfcc_train_pos_shift, x_mfcc_train_neg_shift
+    return x_mfcc_train, x_mfcc_train_pos_shift, x_mfcc_train_neg_shift,
+
+
+def extract_mfcc(x_mfcc_train, n_mfcc, x_index, x_row):
+
+    non_zero_idxs = np.argwhere(x_row != 0)[:, 0]
+    x_row = x_row[non_zero_idxs[0]:non_zero_idxs[-1]]
+
+    mfccs1 = librosa.feature.mfcc(y=x_row, sr=22050 * 2, n_mfcc=n_mfcc).T
+    mfccs_mean1 = np.mean(mfccs1, axis=0)
+
+    # energy = np.sum(np.power(mfccs_mean1, 2))
+    # mfcc_delta1 = librosa.feature.delta(mfccs_mean1, width=3, axis=0, order=1)
+    # mfcc_delta2 = librosa.feature.delta(mfccs_mean1, width=3, axis=0, order=2)
+
+    # features = np.append(np.concatenate((mfccs_mean1, mfcc_delta1, mfcc_delta2)), energy)
+
+    x_mfcc_train[x_index, :] = mfccs_mean1
 
 
 def extract_mfcc_matrix_from_raw_ndarray_aug_shift(X_train, n_mfcc, shift_array, matrix_size):
@@ -240,6 +267,7 @@ def extract_mel_matrix_from_raw_ndarray_aug_shift(x_data, shift_positions, n_mel
 
 
 def add_random_noise(increment_percent, x_row):
+
     rnd_direction = np.random.randint(0, 2, size=x_row.shape[0])
     rnd_direction[rnd_direction == 0] = -1
     x_row_rnd_noise = x_row * increment_percent * rnd_direction

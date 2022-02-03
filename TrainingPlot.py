@@ -1,8 +1,8 @@
 import tensorflow as tf
 from matplotlib import pyplot as plt
 
-plot_per_epoch = 200
-save_per_epoch = 200
+plot_per_epoch = 50
+save_per_epoch = 90
 
 
 class PlotLosses(tf.keras.callbacks.Callback):

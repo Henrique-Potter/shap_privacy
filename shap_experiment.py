@@ -54,22 +54,22 @@ def main():
     gen_gt_shap_list, gen_corr_shap_list = parse_shap_values_by_class(gen_shap_values, y_test_gen_encoded)
     emo_gt_shap_list, emo_corr_shap_list = parse_shap_values_by_class(emo_shap_values, y_test_emo_encoded)
 
-    # # Exporting SHAP to excel
-    # model_name = 'gender_model_gt'
-    # export_shap_to_csv(gen_gt_shap_list, model_name)
-    # model_name = 'gender_model_cr'
-    # export_shap_to_csv(gen_corr_shap_list, model_name)
-    #
-    # model_name = 'emo_mo del_gt'
-    # export_shap_to_csv(emo_gt_shap_list, model_name)
-    # model_name = 'emo_model_cr'
-    # export_shap_to_csv(emo_corr_shap_list, model_name)
+    # Exporting SHAP to excel
+    model_name = 'gender_model_gt'
+    export_shap_to_csv(gen_gt_shap_list, model_name)
+    model_name = 'gender_model_cr'
+    export_shap_to_csv(gen_corr_shap_list, model_name)
+
+    model_name = 'emo_mo del_gt'
+    export_shap_to_csv(emo_gt_shap_list, model_name)
+    model_name = 'emo_model_cr'
+    export_shap_to_csv(emo_corr_shap_list, model_name)
     #
     # # ------------------------ Analyzing Shap values ------------------------
-    # mean_std_analysis(gen_gt_shap_list)
-    # mean_std_analysis(gen_corr_shap_list)
-    # mean_std_analysis(emo_gt_shap_list)
-    # mean_std_analysis(emo_corr_shap_list)
+    mean_std_analysis(gen_gt_shap_list)
+    mean_std_analysis(gen_corr_shap_list)
+    mean_std_analysis(emo_gt_shap_list)
+    mean_std_analysis(emo_corr_shap_list)
 
     # mean_std_analysis(gen_corr_shap_list)
     # mean_std_analysis(emo_corr_shap_list)
@@ -105,7 +105,7 @@ def export_shap_to_csv(gen_ground_truth_list, model_name):
     class_id = 0
     for class_data in gen_ground_truth_list:
         numpy_matrix_df = pd.DataFrame(class_data)
-        numpy_matrix_df.to_excel("./data/{}_class_{}_shap_values.xlsx".format(model_name, class_id))
+        numpy_matrix_df.to_excel("./data/csv/{}_class_{}_shap_values.xlsx".format(model_name, class_id))
         class_id += 1
 
 
@@ -114,7 +114,7 @@ def extract_shap_values(shap_df_path, model, x_target_data, x_background_data, n
     if not Path(shap_df_path).exists():
         print("Calculating Shap values")
         # Generating Shap Values
-        shap_vals, e = extract_shap(model, x_target_data, x_background_data, 150, nr_classes)
+        shap_vals, e = extract_shap(model, x_target_data, x_background_data, 1000, nr_classes)
         np.save(shap_df_path, shap_vals, allow_pickle=True)
     else:
         shap_vals = np.load(shap_df_path, allow_pickle=True)
@@ -615,7 +615,6 @@ def parse_shap_values_by_class(shap_data, y_data):
     #This will be equal to the number of classes
     gt_shap_list = [[] for x in range(len(shap_values))]
     correct_shap_list = [[] for x in range(len(shap_values))]
-    y_data_int = np.argmax(y_data, axis=1)
 
     for index in range(y_data.shape[0]):
         # Getting the true class number (equivalent to logit id)
@@ -623,12 +622,14 @@ def parse_shap_values_by_class(shap_data, y_data):
         # Getting the index position of the ground truth shap values
         gt_class_shp_index = np.argwhere(shap_data[1][index] == gt_class_nr)[0][0]
         # Get the actual shapeley value at the gt_class_shp_index postion
-        gt_shp_vals = np.squeeze(shap_values[gt_class_shp_index][index], axis=1)
+        gt_shp_vals = shap_values[gt_class_shp_index][index]
         # Append in a list ordered by class number
         gt_shap_list[gt_class_nr].append(gt_shp_vals)
 
+        # This maps the matches between model prediction and ground truth
         if correct_shap_map[index]:
-            correct_shp_vals = np.squeeze(shap_values[0][index], axis=1)
+            # The correct shap will always be at position 0 since its ranked by output probability.
+            correct_shp_vals = shap_values[0][index]
             correct_shap_list[gt_class_nr].append(correct_shp_vals)
 
     processed_gt_matrix_list = clean_outliers(gt_shap_list)
