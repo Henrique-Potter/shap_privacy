@@ -355,10 +355,10 @@ def get_obfuscation_model_relu():
     return model
 
 
-def get_obfuscation_model():
+def get_obfuscation_model(input_shape):
 
     model = Sequential()
-    model.add(Dense(128, input_shape=(40, ), kernel_regularizer='l2'))
+    model.add(Dense(128, input_shape=(input_shape, ), kernel_regularizer='l2'))
     model.add(Activation('tanh'))
     model.add(Dropout(0.1))
     model.add(Dense(128, kernel_regularizer='l2'))
@@ -376,21 +376,48 @@ def get_obfuscation_model():
     return model
 
 
+def get_obfuscation_model_tanh2(input_shape):
+
+    model = Sequential()
+    model.add(Dense(128, input_shape=(input_shape, ), kernel_regularizer='l2'))
+    model.add(Activation('tanh'))
+    model.add(Dropout(0.1))
+    model.add(Dense(256, kernel_regularizer='l2'))
+    model.add(Activation('tanh'))
+    model.add(Dropout(0.1))
+    model.add(Dense(256, kernel_regularizer='l2'))
+    model.add(Activation('tanh'))
+    model.add(Dropout(0.1))
+    model.add(Dense(256, kernel_regularizer='l2'))
+    model.add(Activation('tanh'))
+    model.add(Dropout(0.1))
+    model.add(Dense(64, kernel_regularizer='l2'))
+    model.add(Activation('tanh'))
+    model.add(Dropout(0.1))
+
+    #model.add(Flatten())
+    model.add(Dense(40, kernel_regularizer='l2'))
+    model.add(Activation('tanh'))
+
+    print(model.summary())
+    return model
+
+
 def get_obfuscation_model_swish(input_shape):
 
     model = Sequential()
-    model.add(Dense(128, input_shape=(input_shape,), kernel_regularizer='l1_l2'))
+    model.add(Dense(128, input_shape=(input_shape,),))
     model.add(Activation('swish'))
     model.add(Dropout(0.1))
-    model.add(Dense(128, kernel_regularizer='l1_l2'))
+    model.add(Dense(128, ))
     model.add(Activation('swish'))
     model.add(Dropout(0.1))
-    model.add(Dense(64,  kernel_regularizer='l1_l2'))
+    model.add(Dense(64,))
     model.add(Activation('swish'))
     model.add(Dropout(0.1))
 
     #model.add(Flatten())
-    model.add(Dense(40,  kernel_regularizer='l1_l2'))
+    model.add(Dense(40, ))
     model.add(Activation('swish'))
 
     print(model.summary())

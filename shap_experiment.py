@@ -484,6 +484,7 @@ def plot_obs_f_performance(perf_list):
     plt.show()
     plt.clf()
 
+
 # Plots performance data for N number of models with N number of obfuscation functions
 def plot_obs_f_performance_by_class(model_name, obf_f_name, obf_f_index, parsed_perf_by_class, priv_class, util_class):
     title_loss = "NN models Loss"

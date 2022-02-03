@@ -377,11 +377,15 @@ def pre_process_fseer_data(audio_files_path, n_mfcc=40, get_emotion_label=True, 
     return X_train_mfcc, y_train_encoded, X_test_mfcc, y_test_encoded
 
 
-def to_batchdataset(x_train_input, x_test_input, y_train_mdl1, y_test_mdl1, batch_size):
+def to_batchdataset(x_train_input, x_test_input, batch_size,  y_train_mdl1=None, y_test_mdl1=None):
     import tensorflow as tf
 
-    mdl_train_dataset = tf.data.Dataset.from_tensor_slices((x_train_input, y_train_mdl1))
-    mdl_test_dataset = tf.data.Dataset.from_tensor_slices((x_test_input, y_test_mdl1))
+    if y_train_mdl1 is not None:
+        mdl_train_dataset = tf.data.Dataset.from_tensor_slices((x_train_input, y_train_mdl1))
+        mdl_test_dataset = tf.data.Dataset.from_tensor_slices((x_test_input, y_test_mdl1))
+    else:
+        mdl_train_dataset = tf.data.Dataset.from_tensor_slices(x_train_input)
+        mdl_test_dataset = tf.data.Dataset.from_tensor_slices(x_test_input)
 
     tr_batchdt = mdl_train_dataset.batch(batch_size)
     te_batchdt = mdl_test_dataset.batch(batch_size)
