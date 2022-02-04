@@ -29,11 +29,13 @@ from tensorflow.keras.layers import Flatten, Dropout, Activation
 from sklearn.preprocessing import StandardScaler
 from keras import backend as K
 from mpl_toolkits.mplot3d import Axes3D
+import matplotlib as mpl
 
 from util.training_engine import train_step
 
 # tf.compat.v1.enable_v2_behavior()
 # tf.config.run_functions_eagerly(True)
+
 
 def train_obfuscation_model(model, x_train_input, x_test_input, x_train_priv, x_test_priv, y_train_mdl1, y_test_mdl1,
                             y_train_mdl2, y_test_mdl2, optimizer, obf_gender=True):
@@ -87,10 +89,10 @@ def train_obfuscation_model(model, x_train_input, x_test_input, x_train_priv, x_
             gen_perf.append(mdl2_perf[1])
 
             # Plotting results.
-            if e % 50 == 10:
+            if e % 100 == 99:
                 priv_util_plot_perf_data(gen_perf, emo_perf, "NN Obfuscator Performance")
                 plot_obf_loss(final_loss_perf)
-            if e % 100 == 90:
+            if e % 100 == 99:
                 calc_confusion_matrix(emo_model, obf_input, y_test_mdl1)
                 calc_confusion_matrix(gender_model, obf_input, y_test_mdl2)
                 # model.save(obf_model_path)
@@ -98,6 +100,7 @@ def train_obfuscation_model(model, x_train_input, x_test_input, x_train_priv, x_
     model.reset_states()
     tf.keras.backend.clear_session()
     tf.compat.v1.reset_default_graph()
+    opt_reset = tf.group([v.initializer for v in optimizer.variables()])
     return model, np.array(emo_perf), np.array(gen_perf)
 
 
@@ -169,50 +172,52 @@ def main():
     pclass_shap_mean0 = np.mean(np.concatenate(gen_gt_shap_list), axis=0)
     pclass_shap_mean_abs = np.mean(np.abs(np.concatenate(gen_gt_shap_list)), axis=0)
     p_shap_mean_sorted_idxs = np.argsort(pclass_shap_mean0)
-
+    p_shap_mean_sorted_abs_idxs = np.argsort(pclass_shap_mean_abs)
+    temp = np.vstack((p_shap_mean_sorted_idxs, p_shap_mean_sorted_abs_idxs))
 
     topk_size = 2
     topk_step = 1
     nr_topk_experiments = 40/topk_step
     topk_emo_perf = []
     topk_gen_perf = []
-
-    # optimizer = tf.keras.optimizers.Adam(learning_rate=0.0001)
-    # optimizers = [tf.keras.optimizers.Adam(learning_rate=0.0001, name='opt{}'.format(x)) for x in range(40)]
+    emo_perf_path = './data/nn_obfuscator_perf/gender_privacy/emo_data_40ft_{}.npy'
+    gen_perf_path = './data/nn_obfuscator_perf/gender_privacy/gen_data_40ft_{}.npy'
 
     for top_k_experiment in range(0, 40, topk_step):
-        # optimizer = optimizers[top_k_experiment]
+        emo_perf_path_full = emo_perf_path.format(top_k_experiment)
+        gen_perf_path_full = gen_perf_path.format(top_k_experiment)
 
-        # optimizer_state = [optimizer.iterations, optimizer.lr, optimizer.beta_1,
-        #                    optimizer.beta_2, optimizer.decay]
-        # optimizer_reset = tf.variables_initializer(optimizer_state)
+        if not Path(emo_perf_path_full).exists() or not Path(gen_perf_path_full).exists():
+            emo_perf, gen_perf = train_obfuscator_top_k_features(p_shap_mean_sorted_abs_idxs,
+                                                                 top_k_experiment,
+                                                                 x_test_emo_cnn_scaled,
+                                                                 x_train_emo_cnn_scaled,
+                                                                 y_test_emo_encoded,
+                                                                 y_test_gen_encoded,
+                                                                 y_train_emo_encoded,
+                                                                 y_train_gen_encoded)
 
-        # Later when you want to reset the optimizer
-        # K.get_session().run(optimizer_reset)
+            np.save(emo_perf_path_full, emo_perf,)
+            np.save(gen_perf_path_full, gen_perf,)
+        else:
+            emo_perf = np.load(emo_perf_path_full, allow_pickle=True)
+            gen_perf = np.load(gen_perf_path_full, allow_pickle=True)
 
-        emo_perf, gen_perf = train_obfuscator_top_k_features(p_shap_mean_sorted_idxs,
-                                                             top_k_experiment,
-                                                             x_test_emo_cnn_scaled,
-                                                             x_train_emo_cnn_scaled,
-                                                             y_test_emo_encoded,
-                                                             y_test_gen_encoded,
-                                                             y_train_emo_encoded,
-                                                             y_train_gen_encoded)
         topk_emo_perf.append(emo_perf)
         topk_gen_perf.append(gen_perf)
 
+    mpl.use('Qt5Agg')
     fig = plt.figure()
     ax = Axes3D(fig)
-
-    X = np.arange(0, epochs)
-    Y = np.arange(0, nr_topk_experiments)
-    X, Y = np.meshgrid(X, Y)
+    X = np.arange(1, epochs + 1)
     Z = np.vstack(topk_gen_perf)
-
-    ax.plot_surface(X, Y, Z, )
-
+    Y = np.arange(1, Z.shape[0] + 1)
+    X, Y = np.meshgrid(X, Y)
+    ax.plot_surface(X, Y, Z, cmap='viridis')
+    ax.set_xlabel('Number of epochs')
+    ax.set_ylabel('Top K feature included')
+    ax.set_zlabel('Private model ACC')
     plt.show()
-
 
 
 def train_obfuscator_top_k_features(p_shap_mean_sorted_idxs, topk_size, x_test_emo_cnn_scaled, x_train_emo_cnn_scaled,
@@ -271,8 +276,8 @@ if __name__ == "__main__":
     gender_model = load_model(gender_model_path)
     emo_model = load_model(emo_model_path)
 
-    batch_size = 64
-    epochs = 2
+    batch_size = 128
+    epochs = 500
     max_iter = 1
     number_features = 40
     #metrics

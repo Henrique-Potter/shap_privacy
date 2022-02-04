@@ -494,7 +494,8 @@ def extract_raw_audio(audio_files):
     audio_raw_df = pd.DataFrame()
     audio_labels_df = pd.DataFrame()
     start_time = time.time()
-
+    audio_labels_list = []
+    audio_raw_list = []
     for full_fname in tqdm(audio_files):
         file_name = Path(full_fname).name
 
@@ -506,9 +507,16 @@ def extract_raw_audio(audio_files):
 
         audio_bin, sample_rate = librosa.load(full_fname, res_type='kaiser_fast')
 
-        audio_labels_df = audio_labels_df.append(Series([emo_label, gen_label]), ignore_index=True)
-        audio_raw_df = audio_raw_df.append(Series(audio_bin), ignore_index=True)
-        
+        audio_labels_list.append([emo_label, gen_label])
+        audio_raw_list.append(audio_bin)
+
+    # audio_labels_df = audio_labels_df.append(Series([emo_label, gen_label]), ignore_index=True)
+    # audio_raw_df = audio_raw_df.append(Series(audio_bin), ignore_index=True)
+    # TODO maybe just using numpy array of arrays is faster
+    print('Converting list to dataframes. This can take a while.')
+    audio_raw_df = pd.DataFrame(audio_raw_list,)
+    audio_labels_df = pd.DataFrame(audio_labels_list,)
+
     print("Time to extract Mel features:  %s seconds." % (time.time() - start_time))
     full_raw_audio_data_df = pd.concat([audio_raw_df, audio_labels_df], ignore_index=True, axis=1)
 

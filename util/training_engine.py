@@ -57,7 +57,7 @@ def train_step(model, priv_mdl, util_mdl, x_input, emo_train_x_slice, y_priv_mdl
 
         if mdl_tgt_id:
             wrong_y = tf.fill(y_priv_mdl.shape, 0.5)
-            priv_mdl_w_loss = priv_mdl_loss_fn(wrong_y, priv_mdl_logits)
+            priv_mdl_w_loss = priv_mdl_loss_fn(wrong_y, priv_mdl_logits) - 1
         else:
             wrong_y = tf.fill(y_util_mdl.shape, 1/nr_priv_classes)
             util_mdl_loss = util_mdl_loss_fn(wrong_y, util_mdl_logits)

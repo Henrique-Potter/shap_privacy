@@ -1,4 +1,3 @@
-import glob
 from pathlib import Path
 import tensorflow as tf
 from sklearn.preprocessing import StandardScaler
