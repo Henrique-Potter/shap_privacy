@@ -415,8 +415,6 @@ def get_obfuscation_model_swish(input_shape):
     model.add(Dense(64,))
     model.add(Activation('swish'))
     model.add(Dropout(0.1))
-
-    #model.add(Flatten())
     model.add(Dense(40, ))
     model.add(Activation('swish'))
 

@@ -136,6 +136,29 @@ def priv_util_plot_perf_data(priv_model_data, util_model_data, title):
     return x_list
 
 
+def priv_util_bar_plot_perf_data(priv_model_data, title):
+    lbl1 = "Gender ACC (Private)"
+    lbl2 = "Emotion ACC (Utility)"
+    priv_model_data = np.squeeze(priv_model_data)
+    topk_features = priv_model_data.shape[0]
+    x_list = [x for x in range(1, topk_features+1)]
+
+    fig = plt.figure()
+    fig.set_dpi(100)
+
+    plt.bar(x_list, priv_model_data, label=lbl1)
+
+    plt.legend()
+    plt.title(title)
+    plt.xlabel("Top K features used to train the Obfuscator")
+    plt.ylabel("Accuracy")
+
+    plt.ylim([0, 1])
+    plt.show()
+
+    return x_list
+
+
 def validate_model(model, emo_model, gender_model, emo_test_dataset_batch, gen_test_dataset_batch):
     import tensorflow as tf
     emo_accuracy = tf.keras.metrics.CategoricalAccuracy()
@@ -163,17 +186,26 @@ def validate_model(model, emo_model, gender_model, emo_test_dataset_batch, gen_t
     print(gen_accuracy.result().numpy())
 
 
-def plot_obf_loss(final_loss_perf):
-    title = "Obfuscator Loss per Epoch (lambda*util_loss - (1-lambd) * priv_loss)"
+def plot_obf_loss(losses_perf):
+    title = "Obfuscator Loss per Epoch (lambda*util_loss + (1-lambd) * priv_loss)"
 
-    nr_intensity_levels = len(final_loss_perf)
-    x_list = [x for x in range(1, nr_intensity_levels+1)]
+    losses_sz = len(losses_perf[0])
+    x_list = [x for x in range(1, losses_sz+1)]
 
     fig = plt.figure()
     fig.set_dpi(100)
-    final_loss_perf = np.abs(np.array(final_loss_perf))
-    plt.plot(x_list, final_loss_perf)
-    # plt.legend()
+    total_loss_perf = np.array(losses_perf[0])
+    trpriv_loss_perf = np.array(losses_perf[1])
+    trutil_loss_perf = np.array(losses_perf[2])
+    tepriv_loss_perf = np.array(losses_perf[3])
+    teutil_loss_perf = np.array(losses_perf[4])
+
+    plt.plot(x_list, total_loss_perf, label="Train Total Loss")
+    plt.plot(x_list, trpriv_loss_perf, label="Train Priv Model Loss")
+    plt.plot(x_list, trutil_loss_perf, label="Train Util Model Loss")
+    plt.plot(x_list, tepriv_loss_perf, label="Test Priv Model Loss")
+    plt.plot(x_list, teutil_loss_perf, label="Test Util Model Loss")
+    plt.legend()
     plt.title(title)
     plt.xlabel("Epochs")
     plt.ylabel("Loss")

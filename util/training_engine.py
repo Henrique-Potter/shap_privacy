@@ -29,7 +29,7 @@ def train_model(model, model_path, batch, epoch, x_traincnn, y_train, x_testcnn,
 
 
 @tf.function
-def train_step(model, priv_mdl, util_mdl, x_input, emo_train_x_slice, y_priv_mdl, y_util_mdl, optimizer, priv_mdl_loss_fn, util_mdl_loss_fn, lambd, mdl_tgt_id):
+def train_step(model, priv_mdl, util_mdl, x_input, emo_train_x_slice, y_priv_mdl, y_util_mdl, priv_mdl_loss_fn, util_mdl_loss_fn, lambd, mdl_tgt_id):
 
     with tf.GradientTape() as tape:
 
@@ -51,22 +51,23 @@ def train_step(model, priv_mdl, util_mdl, x_input, emo_train_x_slice, y_priv_mdl
         # priv_mdl_true_loss = priv_mdl_loss_fn(tf.cast(y_priv_mdl, tf.float64), tf.cast(priv_mdl_logits, tf.float64))
 
         util_mdl_logits = util_mdl(obfuscated_input, training=False)
-        util_mdl_loss = util_mdl_loss_fn(y_util_mdl, util_mdl_logits)
+        uloss = util_mdl_loss_fn(y_util_mdl, util_mdl_logits)
 
         tape.watch(model_mask)
 
         if mdl_tgt_id:
             wrong_y = tf.fill(y_priv_mdl.shape, 0.5)
-            priv_mdl_w_loss = priv_mdl_loss_fn(wrong_y, priv_mdl_logits) - 1
+            ploss = priv_mdl_loss_fn(wrong_y, priv_mdl_logits)
         else:
+            # Fix to multiclass label mode
             wrong_y = tf.fill(y_util_mdl.shape, 1/nr_priv_classes)
             util_mdl_loss = util_mdl_loss_fn(wrong_y, util_mdl_logits)
 
-        final_loss = (lambd) * util_mdl_loss + (1-lambd) * priv_mdl_w_loss
+        tloss = lambd * uloss + (1-lambd) * ploss
 
-    gradients = tape.gradient(final_loss, model.trainable_variables)
+    gradients = tape.gradient(tloss, model.trainable_variables)
 
-    return final_loss,  gradients
+    return tloss, ploss, uloss, gradients, priv_mdl_logits
 
 
 def estimate_logits_from_loss(batch_size, nr_priv_classes, priv_mdl_loss_fn, priv_mdl_true_loss, wrong_y):
