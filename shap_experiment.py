@@ -12,9 +12,7 @@ import matplotlib.pyplot as plt
 from data_processing import pre_process_data
 from experiment_config import set_experiment_config
 from obfuscation_functions import general_by_class_mask
-from util.custom_functions import replace_outliers_by_std, replace_outliers_by_quartile, mean_std_analysis, \
-    calc_confusion_matrix
-
+from util.custom_functions import replace_outliers_by_std, replace_outliers_by_quartile, mean_std_analysis
 print("Num GPUs Available: ", len(tf.config.list_physical_devices('GPU')))
 
 

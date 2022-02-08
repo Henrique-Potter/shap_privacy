@@ -12,93 +12,94 @@ from pandas import Series
 from tqdm import tqdm
 
 
-def pre_process_data(audio_files_path, n_mfcc=40, get_emotion_label=True, augment_data=False):
+def pre_process_data(audio_files_path, n_mfcc=40):
 
-    audio_files = glob.glob("{}/**/*.wav".format(audio_files_path), recursive=True)
+    train_x_mfcc_path = 'data/audio_train_data_mfcc{}_np.npy'.format(n_mfcc)
+    test_x_mfcc_path = 'data/audio_test_data_mfcc{}_np.npy'.format(n_mfcc)
 
-    lst = []
-    for full_fname in tqdm(audio_files):
-        lst.append(full_fname)
+    train_y_emo_mfcc_path = 'data/audio_emo_train_y_data_{}_np.npy'.format(n_mfcc)
+    test_y_emo_mfcc_path = 'data/audio_emo_test_y_data_{}_np.npy'.format(n_mfcc)
 
-    audio_raw_df_path = 'data/audio_data_raw_df.pkl'
+    train_y_gen_mfcc_path = 'data/audio_gen_train_y_data_{}_np.npy'.format(n_mfcc)
+    test_y_gen_mfcc_path = 'data/audio_gen_test_y_data_{}_np.npy'.format(n_mfcc)
 
-    if not Path(audio_raw_df_path).exists():
+    # Assuming that y has to exist if x exists
+    if not Path(train_x_mfcc_path).exists() and not Path(test_x_mfcc_path).exists():
 
-        print("Loading files and raw audio data.")
+        audio_files = glob.glob("{}/**/*.wav".format(audio_files_path), recursive=True)
 
-        audio_raw_df = extract_raw_audio(audio_files)
-        print("Loading files and raw audio data successful.")
-        audio_raw_df.to_pickle(audio_raw_df_path)
+        lst = []
+        for full_fname in tqdm(audio_files):
+            lst.append(full_fname)
 
-    else:
-        print("Loading pre extracted raw audio from pkl file.")
-        audio_raw_df = pd.read_pickle(audio_raw_df_path)
-        print("Loading pre extracted raw audio from pkl file successful.")
+        audio_raw_df_path = 'data/audio_data_raw_df.pkl'
 
-    if get_emotion_label:
-        X_train, X_test, y_train, y_test = train_test_split(audio_raw_df.iloc[:, :-2],
-                                                            audio_raw_df.iloc[:, -2:-1],
-                                                            test_size=0.2, random_state=6)
-    else:
-        X_train, X_test, y_train, y_test = train_test_split(audio_raw_df.iloc[:, :-2],
-                                                            audio_raw_df.iloc[:, -1:],
-                                                            test_size=0.2, random_state=6)
+        if not Path(audio_raw_df_path).exists():
 
-    from keras.utils import np_utils
-    from sklearn.preprocessing import LabelEncoder
+            print("Loading files and raw audio data.")
 
-    X_train_np = np.array(X_train)
-    y_train_np = np.ravel(np.array(y_train))
-    X_test_np = np.array(X_test)
-    y_test_np = np.ravel(np.array(y_test))
+            audio_raw_df = extract_raw_audio(audio_files)
+            print("Loading files and raw audio data successful.")
+            audio_raw_df.to_pickle(audio_raw_df_path)
 
-    lb = LabelEncoder()
-    y_train_encoded = np_utils.to_categorical(lb.fit_transform(y_train_np))
-    y_test_encoded = np_utils.to_categorical(lb.fit_transform(y_test_np))
-
-    train_data_mfcc_aug_path = 'data/audio_train_data_mfcc{}_aug_np_v2.npy'.format(n_mfcc)
-    train_data_mfcc_path = 'data/audio_train_data_mfcc{}_np.npy'.format(n_mfcc)
-
-    print("Extracting mfccs from raw nd train audio data split.")
-    if augment_data:
-        if not Path(train_data_mfcc_aug_path).exists():
-            print("Augmenting data!")
-            all_aug_data = extract_mfcc_from_raw_ndarray_aug_shift(X_train_np, n_mfcc, 5000)
-            X_train_mfcc = np.concatenate(all_aug_data, axis=0)
-
-            np.save(train_data_mfcc_aug_path.format(n_mfcc), X_train_mfcc)
-            y_multi = X_train_mfcc.shape[0] / y_train_encoded.shape[0]
-            y_train_encoded = np.concatenate((y_train_encoded,) * int(y_multi), axis=0)
         else:
-            print("Augmented train data found. Loading from npy file.")
-            X_train_mfcc = np.load(train_data_mfcc_aug_path)
-            y_multi = X_train_mfcc.shape[0] / y_train_encoded.shape[0]
-            y_train_encoded = np.concatenate((y_train_encoded,) * int(y_multi), axis=0)
+            print("Loading pre extracted raw audio from pkl file.")
+            audio_raw_df = pd.read_pickle(audio_raw_df_path)
+            print("Loading pre extracted raw audio from pkl file successful.")
 
-        print("Loading augmented train data successful.")
+        X_train, X_test, y_emo_train, y_emo_test = train_test_split(audio_raw_df.iloc[:, :-2], audio_raw_df.iloc[:, -2:-1], test_size=0.2, random_state=6)
+
+        X_train, X_test, y_gen_train, y_gen_test = train_test_split(audio_raw_df.iloc[:, :-2], audio_raw_df.iloc[:, -1:], test_size=0.2, random_state=6)
+
+        from keras.utils import np_utils
+        from sklearn.preprocessing import LabelEncoder
+
+        X_train_np = np.array(X_train)
+        y_emo_train_np = np.ravel(np.array(y_emo_train))
+        y_gen_train_np = np.ravel(np.array(y_gen_train))
+        X_test_np = np.array(X_test)
+        y_emo_test_np = np.ravel(np.array(y_emo_test))
+        y_gen_test_np = np.ravel(np.array(y_gen_test))
+
+        lb = LabelEncoder()
+        y_emo_train_encoded = np_utils.to_categorical(lb.fit_transform(y_emo_train_np))
+        y_gen_train_encoded = np_utils.to_categorical(lb.fit_transform(y_gen_train_np))
+
+        y_emo_test_encoded = np_utils.to_categorical(lb.fit_transform(y_emo_test_np))
+        y_gen_test_encoded = np_utils.to_categorical(lb.fit_transform(y_gen_test_np))
+
+        print("Augmenting data and extracting train MFCCs!")
+        all_aug_data = extract_mfcc_from_raw_ndarray_aug_shift(X_train_np, n_mfcc, 5000)
+        x_train_mfcc = np.concatenate(all_aug_data, axis=0)
+
+        y_multi = x_train_mfcc.shape[0] / y_emo_train_encoded.shape[0]
+        y_emo_train_encoded = np.concatenate((y_emo_train_encoded,) * int(y_multi), axis=0)
+        y_gen_train_encoded = np.concatenate((y_gen_train_encoded,) * int(y_multi), axis=0)
+        np.save(train_x_mfcc_path.format(n_mfcc), x_train_mfcc)
+        np.save(train_y_emo_mfcc_path.format(n_mfcc), y_emo_train_encoded)
+        np.save(train_y_gen_mfcc_path.format(n_mfcc), y_gen_train_encoded)
+
+        print("Extracting test MFCCs from raw audio.")
+        x_test_mfcc = extract_mean_mfcc_from_raw_ndarray(X_test_np, n_mfcc)
+        np.save(test_x_mfcc_path, x_test_mfcc)
+        np.save(test_y_emo_mfcc_path, y_emo_test_encoded)
+        np.save(test_y_gen_mfcc_path, y_gen_test_encoded)
+
+        print("Loading data from raw audio successful.")
+
     else:
-        if not Path(train_data_mfcc_path).exists():
-            X_train_mfcc = extract_mean_mfcc_from_raw_ndarray(X_train_np, n_mfcc)
-            np.save(train_data_mfcc_path, X_train_mfcc)
-        else:
-            print("Train data found. Loading from npy file.")
-            X_train_mfcc = np.load(train_data_mfcc_path)
-        print("Loading train successful.")
 
-    test_data_mfcc_path = 'data/audio_test_data_mfcc{}_np_2.npy'.format(n_mfcc)
-    print("Extracting mfccs from raw nd test audio data split.")
-    if not Path(test_data_mfcc_path).exists():
-        X_test_mfcc = extract_mean_mfcc_from_raw_ndarray(X_test_np, n_mfcc)
-        np.save(test_data_mfcc_path, X_test_mfcc)
-    else:
-        print("Test data found. Loading from npy file.")
-        X_test_mfcc = np.load(test_data_mfcc_path)
-    print("Loading test data successful.")
+        x_train_mfcc = np.load(train_x_mfcc_path)
+        x_test_mfcc = np.load(test_x_mfcc_path)
 
-    # x_traincnn = np.expand_dims(X_train_mfcc, axis=2)
-    # x_testcnn = np.expand_dims(X_test_mfcc, axis=2)
+        y_emo_train_encoded = np.load(train_y_emo_mfcc_path)
+        y_emo_test_encoded = np.load(test_y_emo_mfcc_path)
+        y_gen_train_encoded = np.load(train_y_gen_mfcc_path)
+        y_gen_test_encoded = np.load(test_y_gen_mfcc_path)
 
-    return X_train_mfcc, y_train_encoded, X_test_mfcc, y_test_encoded
+        print("Loading augmented data successful.")
+
+    return x_train_mfcc, x_test_mfcc, y_emo_train_encoded, y_emo_test_encoded, y_gen_train_encoded, y_gen_test_encoded
 
 
 def extract_mean_mfcc_from_raw_ndarray(X_train, n_mfcc):
@@ -377,15 +378,11 @@ def pre_process_fseer_data(audio_files_path, n_mfcc=40, get_emotion_label=True, 
     return X_train_mfcc, y_train_encoded, X_test_mfcc, y_test_encoded
 
 
-def to_batchdataset(x_train_input, x_test_input, batch_size,  y_train_mdl1=None, y_test_mdl1=None):
+def to_batchdataset(x_train_input, x_test_input, batch_size):
     import tensorflow as tf
 
-    if y_train_mdl1 is not None:
-        mdl_train_dataset = tf.data.Dataset.from_tensor_slices((x_train_input, y_train_mdl1))
-        mdl_test_dataset = tf.data.Dataset.from_tensor_slices((x_test_input, y_test_mdl1))
-    else:
-        mdl_train_dataset = tf.data.Dataset.from_tensor_slices(x_train_input)
-        mdl_test_dataset = tf.data.Dataset.from_tensor_slices(x_test_input)
+    mdl_train_dataset = tf.data.Dataset.from_tensor_slices(x_train_input)
+    mdl_test_dataset = tf.data.Dataset.from_tensor_slices(x_test_input)
 
     tr_batchdt = mdl_train_dataset.batch(batch_size)
     te_batchdt = mdl_test_dataset.batch(batch_size)

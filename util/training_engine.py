@@ -29,14 +29,14 @@ def train_model(model, model_path, batch, epoch, x_traincnn, y_train, x_testcnn,
 
 
 @tf.function
-def train_step(model, priv_mdl, util_mdl, x_input, emo_train_x_slice, y_priv_mdl, y_util_mdl, priv_mdl_loss_fn, util_mdl_loss_fn, lambd, mdl_tgt_id):
+def train_step(model, priv_mdl, util_mdl, x_input, train_priv_x, y_priv_mdl, y_util_mdl, priv_mdl_loss_fn, util_mdl_loss_fn, lambd, mdl_tgt_id):
 
     with tf.GradientTape() as tape:
 
         batch_sz = x_input.shape[0]
         feature_sz = x_input.shape[1]
         nr_priv_classes = y_priv_mdl.shape[1]
-        model_mask = model(emo_train_x_slice, training=True)
+        model_mask = model(train_priv_x, training=True)
 
         paddings = tf.constant([[0, 0], [0, 40 - model_mask.shape[1]]])
         final_mask = tf.pad(model_mask, paddings)

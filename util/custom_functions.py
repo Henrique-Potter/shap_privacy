@@ -203,6 +203,14 @@ def plot_obf_loss(losses_perf):
     plt.plot(x_list, total_loss_perf, label="Train Total Loss")
     plt.plot(x_list, trpriv_loss_perf, label="Train Priv Model Loss")
     plt.plot(x_list, trutil_loss_perf, label="Train Util Model Loss")
+
+    plt.legend()
+    plt.title(title)
+    plt.xlabel("Epochs")
+    plt.ylabel("Loss")
+    plt.yscale("log")
+    plt.show()
+
     plt.plot(x_list, tepriv_loss_perf, label="Test Priv Model Loss")
     plt.plot(x_list, teutil_loss_perf, label="Test Util Model Loss")
     plt.legend()

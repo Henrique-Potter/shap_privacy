@@ -7,45 +7,29 @@ import numpy as np
 import tensorflow as tf
 from pathlib import Path
 
-from blume.table import table
-from scipy.cluster.vq import whiten
 from tqdm import tqdm
 from tensorflow.keras.models import load_model
-import matplotlib.pyplot as plt
 from data_processing import pre_process_data, to_batchdataset
 from experiment_neural_nets import get_obfuscation_model, get_obfuscation_model_swish, get_obfuscation_model_relu, \
     get_obfuscation_model_selu, get_obfuscation_model_tanh2
-from obfuscation_functions import *
-from util.custom_functions import replace_outliers_by_std, mean_std_analysis, replace_outliers_by_quartile, \
-    calc_confusion_matrix, priv_util_plot_perf_data, plot_obf_loss
 
-from shap_experiment import extract_shap, extract_shap_values, parse_shap_values_by_class, export_shap_to_csv
-
-from keras.layers import Conv2D, MaxPool2D
-from tensorflow.keras import optimizers
-from tensorflow.keras.models import Sequential
-from tensorflow.keras.layers import Dense
-from tensorflow.keras.layers import Flatten, Dropout, Activation
+from shap_experiment import extract_shap_values, parse_shap_values_by_class
 from sklearn.preprocessing import StandardScaler
-from keras import backend as K
-from mpl_toolkits.mplot3d import Axes3D
-import matplotlib as mpl
 
+from util.custom_functions import priv_util_plot_perf_data, plot_obf_loss, calc_confusion_matrix
 from util.training_engine import train_step
 
-# tf.compat.v1.enable_v2_behavior()
-# tf.config.run_functions_eagerly(True)
 
-
-def train_obfuscation_model(model, x_train_input, x_test_input, x_train_priv, x_test_priv, y_train_mdl1, y_test_mdl1,
-                            y_train_mdl2, y_test_mdl2, optimizer, lambd, obf_gender=True):
+def train_obfuscation_model(obf_model, x_train_input, x_test_input, x_train_priv, x_test_priv, y_train_util, y_test_util,
+                            y_train_priv, y_test_priv, optimizer, lambd, obf_gender=True):
 
     # Convert to tensor batch iterators
-    emo_tr_batchdt, emo_te_batchdt = to_batchdataset(x_train_input, x_test_input, batch_size, y_train_mdl1, y_test_mdl1)
-    gen_tr_batchdt, gen_te_batchdt = to_batchdataset(x_train_input, x_test_input, batch_size, y_train_mdl2, y_test_mdl2)
-
-    # Convert to tensor batch iterators
-    emo_tr_batchdt_slice, emo_te_batchdt_slice = to_batchdataset(x_train_priv, x_test_priv, batch_size)
+    # Both models will always share the same X train and X test.
+    # mdl1_xy_tr_batchdt, mdl1_xy_te_batchdt = to_batchdataset(x_train_input, x_test_input, batch_size, y_train_mdl1, y_test_mdl1)
+    util_xy_tr_batchdt = tf.data.Dataset.from_tensor_slices((x_train_input, y_train_util)).batch(batch_size)
+    priv_y_tr_batch = tf.data.Dataset.from_tensor_slices(y_train_priv).batch(batch_size)
+    # Converting the feature specific input to tensors
+    masked_x_tr_batchdt, masked_x_te_batchdt = to_batchdataset(x_train_priv, x_test_priv, batch_size)
 
     loss_fn_emo = tf.keras.losses.CategoricalCrossentropy()
     loss_fn_gen = tf.keras.losses.BinaryCrossentropy()
@@ -61,23 +45,24 @@ def train_obfuscation_model(model, x_train_input, x_test_input, x_train_priv, x_
 
     with tf.device('gpu:0'):
         for e in tqdm(range(epochs)):
-            for (emo_train_x, emo_train_y), (_, gen_train_y), emo_train_x_slice in zip(emo_tr_batchdt,
-                                                                                       gen_tr_batchdt,
-                                                                                       emo_tr_batchdt_slice):
+            # emo_train_x = gen_train_x
+            for (x_tr_batch, util_tr_y_batch), priv_tr_y_batch, masked_x_tr_batch in zip(util_xy_tr_batchdt,
+                                                                                       priv_y_tr_batch,
+                                                                                       masked_x_tr_batchdt):
 
-                tloss, ploss, uloss, gradients, _ = train_step(model,
-                                                                             gender_model,
-                                                                             emo_model,
-                                                                             emo_train_x,
-                                                                             emo_train_x_slice,
-                                                                             gen_train_y,
-                                                                             emo_train_y,
-                                                                             loss_fn_gen,
-                                                                             loss_fn_emo,
-                                                                             lambd,
-                                                                             mdl_target)
+                tloss, ploss, uloss, gradients, _ = train_step(obf_model,
+                                                               priv_model,
+                                                               util_model,
+                                                               x_tr_batch,
+                                                               masked_x_tr_batch,
+                                                               priv_tr_y_batch,
+                                                               util_tr_y_batch,
+                                                               loss_fn_gen,
+                                                               loss_fn_emo,
+                                                               lambd,
+                                                               mdl_target)
 
-                optimizer.apply_gradients(zip(gradients, model.trainable_variables))
+                optimizer.apply_gradients(zip(gradients, obf_model.trainable_variables))
                 total_tr_loss(tloss)
                 priv_loss(ploss)
                 util_loss(uloss)
@@ -94,29 +79,29 @@ def train_obfuscation_model(model, x_train_input, x_test_input, x_train_priv, x_
             priv_loss.reset_states()
             util_loss.reset_states()
 
-            obf_input = obfuscate_input(model, x_test_priv, x_test_input)
-            mdl1_perf = emo_model.evaluate(obf_input, y_test_mdl1, verbose=0)
+            obf_input = obfuscate_input(obf_model, masked_x_te_batchdt, x_test_input)
+            mdl1_perf = util_model.evaluate(obf_input, y_test_util, verbose=0)
             # mdl1_perf2 = emo_model.evaluate(x_test_input, y_test_mdl1, verbose=1)
-            mdl2_perf = gender_model.evaluate(obf_input, y_test_mdl2, verbose=0)
+            mdl2_perf = priv_model.evaluate(obf_input, y_test_priv, verbose=0)
             emo_perf.append(mdl1_perf[1])
             gen_perf.append(mdl2_perf[1])
             final_loss_perf[3].append(mdl1_perf[0])
             final_loss_perf[4].append(mdl2_perf[0])
 
-            # # Plotting results.
-            # if (e+1) % plot_at_epoch == 0:
-            #     priv_util_plot_perf_data(gen_perf, emo_perf, "NN Obfuscator Performance")
-            #     plot_obf_loss(final_loss_perf)
-            # if (e+1) % plot_at_epoch == 0:
-            #     calc_confusion_matrix(emo_model, obf_input, y_test_mdl1)
-            #     calc_confusion_matrix(gender_model, obf_input, y_test_mdl2)
-            #     # model.save(obf_model_path)
+            # Plotting results.
+            if (e+1) % plot_at_epoch == 0:
+                priv_util_plot_perf_data(gen_perf, emo_perf, "NN Obfuscator Performance")
+                plot_obf_loss(final_loss_perf)
+            if (e+1) % plot_at_epoch == 0:
+                calc_confusion_matrix(priv_model, obf_input, y_test_priv)
+                calc_confusion_matrix(util_model, obf_input, y_test_util)
+                # model.save(obf_model_path)
 
-    model.reset_states()
+    obf_model.reset_states()
     tf.keras.backend.clear_session()
     tf.compat.v1.reset_default_graph()
     opt_reset = tf.group([v.initializer for v in optimizer.variables()])
-    return model, np.array(emo_perf), np.array(gen_perf)
+    return obf_model, np.array(emo_perf), np.array(gen_perf)
 
 
 def print_gen_logits(gen_train_y, priv_mdl_logits):
@@ -134,6 +119,7 @@ def print_gen_logits(gen_train_y, priv_mdl_logits):
 def obfuscate_input(model, obfuscator_x_input, clean_x_innput):
     # Generating the mask
     obf_masks = model.predict(obfuscator_x_input)
+
     nr_features = clean_x_innput[0].shape[0]
     mask_size = obf_masks[0].shape[0]
     padded_masks = np.pad(obf_masks, [(0, 0), (0, nr_features - mask_size)], mode='constant',
@@ -147,36 +133,28 @@ def main():
 
     # get dataset
     print("Pre-processing audio files!")
-    x_train_emo_cnn, y_train_emo_encoded, x_test_emo_cnn, y_test_emo_encoded = pre_process_data(audio_files_path, get_emotion_label=True)
-    x_train_gen_cnn, y_train_gen_encoded, x_test_gen_cnn, y_test_gen_encoded = pre_process_data(audio_files_path, get_emotion_label=False)
+    x_train, x_test, y_train_emo, y_test_emo, y_train_gen, y_test_gen = pre_process_data(audio_files_path,)
     print("Pre-processing audio files Complete!")
 
-    # Sanity check. These summations should be 0.
-    train_equal_sum = np.sum(x_train_emo_cnn != x_train_gen_cnn)
-    test_equal_sum = np.sum(x_test_emo_cnn != x_test_gen_cnn)
-
-    if train_equal_sum + test_equal_sum != 0:
-        raise Exception('Train and Test sets for different models do not match')
-
     # Squeeze extra dimension
-    x_train_emo_cnn = np.squeeze(x_train_emo_cnn)
-    x_test_emo_cnn = np.squeeze(x_test_emo_cnn)
+    # x_train_emo_cnn = np.squeeze(x_train)
+    # x_test_emo_cnn = np.squeeze(x_test)
 
     # Scaling and setting type to float32
     sc = StandardScaler()
-    x_train_emo_cnn_scaled = sc.fit_transform(x_train_emo_cnn).astype(np.float32)
-    x_test_emo_cnn_scaled = sc.transform(x_test_emo_cnn).astype(np.float32)
+    x_train_scaled = sc.fit_transform(x_train).astype(np.float32)
+    x_test_scaled = sc.transform(x_test).astype(np.float32)
 
-    gender_nr_classes = len(y_train_gen_encoded[0])
-    emo_nr_classes = len(y_train_emo_encoded[0])
+    gender_nr_classes = len(y_train_gen[0])
+    emo_nr_classes = len(y_train_emo[0])
     print("Loading shap values")
     # When using ranked outputs, the shapeley values are also sorted by rank (e.g., index 0 always has the shapeley of the model prediction)
-    gen_shap_values = extract_shap_values(gen_shap_df_path, gender_model, x_test_emo_cnn_scaled, x_train_emo_cnn_scaled, gender_nr_classes)
-    emo_shap_values = extract_shap_values(emo_shap_df_path, emo_model, x_test_emo_cnn_scaled, x_train_emo_cnn_scaled, emo_nr_classes)
+    gen_shap_values = extract_shap_values(gen_shap_df_path, priv_model, x_test_scaled, x_train_scaled, gender_nr_classes)
+    emo_shap_values = extract_shap_values(emo_shap_df_path, util_model, x_test_scaled, x_train_scaled, emo_nr_classes)
 
     # Isolating shap values by class.
-    gen_gt_shap_list, gen_corr_shap_list = parse_shap_values_by_class(gen_shap_values, y_test_gen_encoded)
-    emo_gt_shap_list, emo_corr_shap_list = parse_shap_values_by_class(emo_shap_values, y_test_emo_encoded)
+    gen_gt_shap_list, gen_corr_shap_list = parse_shap_values_by_class(gen_shap_values, y_test_gen)
+    emo_gt_shap_list, emo_corr_shap_list = parse_shap_values_by_class(emo_shap_values, y_test_emo)
 
     # model_name = 'gender_model_gt'
     # export_shap_to_csv(gen_gt_shap_list, model_name)
@@ -196,33 +174,43 @@ def main():
     # pclass_shap_list0 = gen_gt_shap_list[0]
     # pclass_shap_list1 = gen_gt_shap_list[1]
 
-    pclass_shap_mean0 = np.mean(np.concatenate(gen_gt_shap_list), axis=0)
-    pclass_shap_mean_abs = np.mean(np.abs(np.concatenate(gen_gt_shap_list)), axis=0)
-    p_shap_mean_sorted_idxs = np.argsort(pclass_shap_mean0)
-    p_shap_mean_sorted_abs_idxs = np.argsort(pclass_shap_mean_abs)
-    temp = np.vstack((p_shap_mean_sorted_idxs, p_shap_mean_sorted_abs_idxs))
+    g_pclass_shap_mean0 = np.mean(np.concatenate(emo_gt_shap_list), axis=0)
+    g_pclass_shap_mean_abs = np.mean(np.abs(np.concatenate(emo_gt_shap_list)), axis=0)
+    g_p_shap_mean_sorted_idxs = np.argsort(g_pclass_shap_mean0)
+    g_p_shap_mean_sorted_abs_idxs = np.argsort(g_pclass_shap_mean_abs)
+    gtemp = np.vstack((g_p_shap_mean_sorted_idxs, g_p_shap_mean_sorted_abs_idxs))
 
-    lambds = [.2, .5, .7, .9]
+    e_pclass_shap_mean0 = np.mean(np.concatenate(gen_gt_shap_list), axis=0)
+    e_pclass_shap_mean_abs = np.mean(np.abs(np.concatenate(gen_gt_shap_list)), axis=0)
+    e_p_shap_mean_sorted_idxs = np.argsort(e_pclass_shap_mean0)
+    e_p_shap_mean_sorted_abs_idxs = np.argsort(e_pclass_shap_mean_abs)
+    temp = np.vstack((e_p_shap_mean_sorted_idxs, e_p_shap_mean_sorted_abs_idxs))
+
+    lambds = [.7]
 
     for lambd in lambds:
 
         emo_perf_path = './data/nn_obfuscator_perf/gender_privacy/emo_data_l'+str(lambd)+'_40ft_{}.npy'
         gen_perf_path = './data/nn_obfuscator_perf/gender_privacy/gen_data_l'+str(lambd)+'_40ft_{}.npy'
 
-        for top_k_size in range(1, 41, 2):
+        # top_k_sizes = [x for x in range(1, 41, 2)]
+        top_k_sizes = [40]
+
+        for top_k_size in top_k_sizes:
             # top_k_experiment = -top_k_experiment
             emo_perf_path_full = emo_perf_path.format(top_k_size)
             gen_perf_path_full = gen_perf_path.format(top_k_size)
 
             if not Path(emo_perf_path_full).exists() or not Path(gen_perf_path_full).exists():
-                emo_perf, gen_perf = train_obfuscator_top_k_features(p_shap_mean_sorted_abs_idxs,
+                emo_perf, gen_perf = train_obfuscator_top_k_features(e_p_shap_mean_sorted_abs_idxs,
                                                                      top_k_size,
-                                                                     x_test_emo_cnn_scaled,
-                                                                     x_train_emo_cnn_scaled,
-                                                                     y_test_emo_encoded,
-                                                                     y_test_gen_encoded,
-                                                                     y_train_emo_encoded,
-                                                                     y_train_gen_encoded, lambd)
+                                                                     x_test_scaled,
+                                                                     x_train_scaled,
+                                                                     y_test_emo,
+                                                                     y_test_gen,
+                                                                     y_train_emo,
+                                                                     y_train_gen,
+                                                                     lambd)
 
                 np.save(emo_perf_path_full, emo_perf,)
                 np.save(gen_perf_path_full, gen_perf,)
@@ -236,7 +224,7 @@ def train_obfuscator_top_k_features(p_shap_idxs, topk_size, x_test_emo_scaled, x
     else:
         priv_feature_mask = p_shap_idxs[:-topk_size]
 
-    # Populating only top k/bot k features to be used for obfuscator trainning
+    # Populating only top k/bot k features to be used for obfuscator training
     x_train_emo_priv = np.zeros(x_train_emo_scaled.shape)
     x_test_emo_priv = np.zeros(x_test_emo_scaled.shape)
     x_train_emo_priv[:, priv_feature_mask] = x_train_emo_scaled[:, priv_feature_mask]
@@ -266,8 +254,6 @@ def train_obfuscator_top_k_features(p_shap_idxs, topk_size, x_test_emo_scaled, x
 
 
 if __name__ == "__main__":
-    # emo_model_path = "emo_checkpoint/emodel_scalarized_data.h5"
-    # gender_model_path = "gmodel_checkpoint/gmodel_scaled_16.h5"
 
     emo_model_path = "emo_checkpoint/emo_model_simple.h5"
     gender_model_path = "gmodel_checkpoint/gender_model_simple.h5"
@@ -286,16 +272,13 @@ if __name__ == "__main__":
     emo_shap_df_path = './data/shapeley/emo_shap_df.npy'
 
     print("Loading trained Neural Nets")
-    gender_model = load_model(gender_model_path)
-    emo_model = load_model(emo_model_path)
+    priv_model = load_model(gender_model_path)
+    util_model = load_model(emo_model_path)
 
     batch_size = 128
-    epochs = 50
-    max_iter = 1
-    number_features = 40
+    epochs = 500
 
     #metrics
-    mdl_target = 1
     plot_at_epoch = 49
 
     main()
