@@ -28,8 +28,8 @@ def train_model(model, model_path, batch, epoch, x_traincnn, y_train, x_testcnn,
     plt.show()
 
 
-@tf.function
-def train_step(model, priv_mdl, util_mdl, x_input, train_priv_x, y_priv_mdl, y_util_mdl, priv_mdl_loss_fn, util_mdl_loss_fn, lambd, mdl_tgt_id):
+# @tf.function
+def train_step(model, priv_mdl, util_mdl, x_input, train_priv_x, y_priv_mdl, y_util_mdl, priv_mdl_loss_fn, util_mdl_loss_fn, lambd):
 
     with tf.GradientTape() as tape:
 
@@ -46,8 +46,6 @@ def train_step(model, priv_mdl, util_mdl, x_input, train_priv_x, y_priv_mdl, y_u
 
         # Calculating loss
         priv_mdl_logits = priv_mdl(obfuscated_input, training=False)
-        # priv_mdl_w_loss = priv_mdl_loss_fn(y_priv_mdl, priv_mdl_logits)
-        # true_wrong_loss = priv_mdl_loss_fn(tf.cast(wrong_y, tf.float64), tf.cast(priv_mdl_logits, tf.float64))
         # priv_mdl_true_loss = priv_mdl_loss_fn(tf.cast(y_priv_mdl, tf.float64), tf.cast(priv_mdl_logits, tf.float64))
 
         util_mdl_logits = util_mdl(obfuscated_input, training=False)
@@ -55,13 +53,12 @@ def train_step(model, priv_mdl, util_mdl, x_input, train_priv_x, y_priv_mdl, y_u
 
         tape.watch(model_mask)
 
-        if mdl_tgt_id:
-            wrong_y = tf.fill(y_priv_mdl.shape, 0.5)
-            ploss = priv_mdl_loss_fn(wrong_y, priv_mdl_logits)
-        else:
-            # Fix to multiclass label mode
-            wrong_y = tf.fill(y_util_mdl.shape, 1/nr_priv_classes)
-            util_mdl_loss = util_mdl_loss_fn(wrong_y, util_mdl_logits)
+        wrong_y = tf.fill(y_priv_mdl.shape, 1/nr_priv_classes)
+        ploss = priv_mdl_loss_fn(wrong_y, priv_mdl_logits)
+
+        # # Fix to multiclass label mode
+        # wrong_y = tf.fill(y_util_mdl.shape, 1/nr_priv_classes)
+        # util_mdl_loss = util_mdl_loss_fn(wrong_y, util_mdl_logits)
 
         tloss = lambd * uloss + (1-lambd) * ploss
 

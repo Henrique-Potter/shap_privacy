@@ -20,16 +20,15 @@ from util.custom_functions import priv_util_plot_perf_data, plot_obf_loss, calc_
 from util.training_engine import train_step
 
 
-def train_obfuscation_model(obf_model, x_train_input, x_test_input, x_train_priv, x_test_priv, y_train_util, y_test_util,
-                            y_train_priv, y_test_priv, optimizer, lambd, obf_gender=True):
+def train_obfuscation_model(obf_model, x_train_input, x_test_input, masked_input, util_labels, priv_labels, optimizer, lambd):
 
     # Convert to tensor batch iterators
     # Both models will always share the same X train and X test.
-    # mdl1_xy_tr_batchdt, mdl1_xy_te_batchdt = to_batchdataset(x_train_input, x_test_input, batch_size, y_train_mdl1, y_test_mdl1)
-    util_xy_tr_batchdt = tf.data.Dataset.from_tensor_slices((x_train_input, y_train_util)).batch(batch_size)
-    priv_y_tr_batch = tf.data.Dataset.from_tensor_slices(y_train_priv).batch(batch_size)
+    util_xy_tr_batch_dt = tf.data.Dataset.from_tensor_slices((x_train_input, util_labels[0])).batch(batch_size)
+    priv_y_tr_batch_dt = tf.data.Dataset.from_tensor_slices(priv_labels[0]).batch(batch_size)
+
     # Converting the feature specific input to tensors
-    masked_x_tr_batchdt, masked_x_te_batchdt = to_batchdataset(x_train_priv, x_test_priv, batch_size)
+    masked_x_tr_batch_dt, masked_x_te_batchdt = to_batchdataset(masked_input[0], masked_input[1], batch_size)
 
     loss_fn_emo = tf.keras.losses.CategoricalCrossentropy()
     loss_fn_gen = tf.keras.losses.BinaryCrossentropy()
@@ -46,9 +45,9 @@ def train_obfuscation_model(obf_model, x_train_input, x_test_input, x_train_priv
     with tf.device('gpu:0'):
         for e in tqdm(range(epochs)):
             # emo_train_x = gen_train_x
-            for (x_tr_batch, util_tr_y_batch), priv_tr_y_batch, masked_x_tr_batch in zip(util_xy_tr_batchdt,
-                                                                                       priv_y_tr_batch,
-                                                                                       masked_x_tr_batchdt):
+            for (x_tr_batch, util_tr_y_batch), priv_tr_y_batch, masked_x_tr_batch in zip(util_xy_tr_batch_dt,
+                                                                                         priv_y_tr_batch_dt,
+                                                                                         masked_x_tr_batch_dt):
 
                 tloss, ploss, uloss, gradients, _ = train_step(obf_model,
                                                                priv_model,
@@ -59,8 +58,7 @@ def train_obfuscation_model(obf_model, x_train_input, x_test_input, x_train_priv
                                                                util_tr_y_batch,
                                                                loss_fn_gen,
                                                                loss_fn_emo,
-                                                               lambd,
-                                                               mdl_target)
+                                                               lambd)
 
                 optimizer.apply_gradients(zip(gradients, obf_model.trainable_variables))
                 total_tr_loss(tloss)
@@ -80,21 +78,21 @@ def train_obfuscation_model(obf_model, x_train_input, x_test_input, x_train_priv
             util_loss.reset_states()
 
             obf_input = obfuscate_input(obf_model, masked_x_te_batchdt, x_test_input)
-            mdl1_perf = util_model.evaluate(obf_input, y_test_util, verbose=0)
+            util_perf = util_model.evaluate(obf_input, util_labels[1], verbose=0)
             # mdl1_perf2 = emo_model.evaluate(x_test_input, y_test_mdl1, verbose=1)
-            mdl2_perf = priv_model.evaluate(obf_input, y_test_priv, verbose=0)
-            emo_perf.append(mdl1_perf[1])
-            gen_perf.append(mdl2_perf[1])
-            final_loss_perf[3].append(mdl1_perf[0])
-            final_loss_perf[4].append(mdl2_perf[0])
+            priv_perf = priv_model.evaluate(obf_input, priv_labels[1], verbose=0)
+            emo_perf.append(util_perf[1])
+            gen_perf.append(priv_perf[1])
+            final_loss_perf[3].append(util_perf[0])
+            final_loss_perf[4].append(priv_perf[0])
 
             # Plotting results.
             if (e+1) % plot_at_epoch == 0:
                 priv_util_plot_perf_data(gen_perf, emo_perf, "NN Obfuscator Performance")
                 plot_obf_loss(final_loss_perf)
             if (e+1) % plot_at_epoch == 0:
-                calc_confusion_matrix(priv_model, obf_input, y_test_priv)
-                calc_confusion_matrix(util_model, obf_input, y_test_util)
+                calc_confusion_matrix(priv_model, obf_input, priv_labels[1])
+                calc_confusion_matrix(util_model, obf_input, util_labels[1])
                 # model.save(obf_model_path)
 
     obf_model.reset_states()
@@ -135,10 +133,6 @@ def main():
     print("Pre-processing audio files!")
     x_train, x_test, y_train_emo, y_test_emo, y_train_gen, y_test_gen = pre_process_data(audio_files_path,)
     print("Pre-processing audio files Complete!")
-
-    # Squeeze extra dimension
-    # x_train_emo_cnn = np.squeeze(x_train)
-    # x_test_emo_cnn = np.squeeze(x_test)
 
     # Scaling and setting type to float32
     sc = StandardScaler()
@@ -201,23 +195,24 @@ def main():
             emo_perf_path_full = emo_perf_path.format(top_k_size)
             gen_perf_path_full = gen_perf_path.format(top_k_size)
 
+            util_labels = (y_train_emo, y_test_emo)
+            priv_labels = (y_train_gen, y_test_gen)
+
             if not Path(emo_perf_path_full).exists() or not Path(gen_perf_path_full).exists():
                 emo_perf, gen_perf = train_obfuscator_top_k_features(e_p_shap_mean_sorted_abs_idxs,
                                                                      top_k_size,
-                                                                     x_test_scaled,
                                                                      x_train_scaled,
-                                                                     y_test_emo,
-                                                                     y_test_gen,
-                                                                     y_train_emo,
-                                                                     y_train_gen,
+                                                                     x_test_scaled,
+                                                                     util_labels,
+                                                                     priv_labels,
                                                                      lambd)
 
                 np.save(emo_perf_path_full, emo_perf,)
                 np.save(gen_perf_path_full, gen_perf,)
 
 
-def train_obfuscator_top_k_features(p_shap_idxs, topk_size, x_test_emo_scaled, x_train_emo_scaled,
-                                    y_test_emo_encoded, y_test_gen_encoded, y_train_emo_encoded, y_train_gen_encoded, lambd):
+def train_obfuscator_top_k_features(p_shap_idxs, topk_size, x_train, x_test,
+                                    util_labels, priv_labels, lambd):
     # Get the Top K is positive
     if topk_size > 0:
         priv_feature_mask = p_shap_idxs[-topk_size:]
@@ -225,28 +220,29 @@ def train_obfuscator_top_k_features(p_shap_idxs, topk_size, x_test_emo_scaled, x
         priv_feature_mask = p_shap_idxs[:-topk_size]
 
     # Populating only top k/bot k features to be used for obfuscator training
-    x_train_emo_priv = np.zeros(x_train_emo_scaled.shape)
-    x_test_emo_priv = np.zeros(x_test_emo_scaled.shape)
-    x_train_emo_priv[:, priv_feature_mask] = x_train_emo_scaled[:, priv_feature_mask]
-    x_test_emo_priv[:, priv_feature_mask] = x_test_emo_scaled[:, priv_feature_mask]
+    masked_x_train = np.zeros(x_train.shape)
+    masked_x_test = np.zeros(x_test.shape)
+    masked_x_train[:, priv_feature_mask] = x_train[:, priv_feature_mask]
+    masked_x_test[:, priv_feature_mask] = x_test[:, priv_feature_mask]
+
+    masked_input = (masked_x_train, masked_x_test)
 
     optimizer = tf.keras.optimizers.Adam(learning_rate=0.00001)
     # optimizer = tf.keras.optimizers.SGD(lr=0.001, momentum=0.9, decay=0.01)
     # optimizer = tf.keras.optimizers.RMSprop(learning_rate=0.001, clipvalue=1.0, decay=6e-8)
 
-    nn_input_sz = x_train_emo_priv.shape
+    nn_input_sz = masked_x_train.shape
     model = get_obfuscation_model_swish(nn_input_sz[1])
 
     if not Path(obf_model_path).exists():
         model, emo_perf, gen_perf = train_obfuscation_model(model,
-                                                            x_train_emo_scaled,
-                                                            x_test_emo_scaled,
-                                                            x_train_emo_priv,
-                                                            x_test_emo_priv,
-                                                            y_train_emo_encoded,
-                                                            y_test_emo_encoded,
-                                                            y_train_gen_encoded,
-                                                            y_test_gen_encoded, optimizer, lambd)
+                                                            x_train,
+                                                            x_test,
+                                                            masked_input,
+                                                            util_labels,
+                                                            priv_labels,
+                                                            optimizer,
+                                                            lambd)
     else:
         model = tf.keras.models.load_model(obf_model_path)
 
@@ -272,8 +268,10 @@ if __name__ == "__main__":
     emo_shap_df_path = './data/shapeley/emo_shap_df.npy'
 
     print("Loading trained Neural Nets")
-    priv_model = load_model(gender_model_path)
-    util_model = load_model(emo_model_path)
+    # priv_model = load_model(gender_model_path)
+    priv_model = load_model(emo_model_path)
+    # util_model = load_model(emo_model_path)
+    util_model = load_model(gender_model_path)
 
     batch_size = 128
     epochs = 500
