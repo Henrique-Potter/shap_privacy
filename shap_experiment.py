@@ -564,24 +564,18 @@ def get_data_samples(perf_data):
     return first, half, last, one_quarter, three_quarters
 
 
-def evaluate_by_class(model, obfuscated_x, y_model_input):
+def evaluate_by_class(model, obfuscated_x, y_model_input, by_class_perf):
 
     nr_classes = y_model_input.shape[1]
-    by_class_perf = []
 
     for cls_index in range(nr_classes):
         single_class_map = y_model_input[:, cls_index] == 1
-        if np.sum(single_class_map) == 0:
-            break
-
-        #simple_bar_plot(obfuscated_x, cls_index)
 
         obfuscated_x_single_class = obfuscated_x[single_class_map]
         y_model_input_single_class = y_model_input[single_class_map]
         obfuscated_single_class_perf = model.evaluate(obfuscated_x_single_class, y_model_input_single_class, verbose=0)
-        by_class_perf.append(obfuscated_single_class_perf)
-
-    return by_class_perf
+        by_class_perf[0][cls_index].append(obfuscated_single_class_perf[0])
+        by_class_perf[1][cls_index].append(obfuscated_single_class_perf[1])
 
 
 def simple_bar_plot(obfuscated_x, class_id):

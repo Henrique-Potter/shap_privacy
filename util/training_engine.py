@@ -28,37 +28,36 @@ def train_model(model, model_path, batch, epoch, x_traincnn, y_train, x_testcnn,
     plt.show()
 
 
-# @tf.function
-def train_step(model, priv_mdl, util_mdl, x_input, train_priv_x, y_priv_mdl, y_util_mdl, priv_mdl_loss_fn, util_mdl_loss_fn, lambd):
+@tf.function
+def train_step(model, priv_mdl, util_mdl, x_input, masked_x_input, y_util, y_priv, util_loss_fn, priv_loss_fn, lambd):
 
     with tf.GradientTape() as tape:
 
-        batch_sz = x_input.shape[0]
-        feature_sz = x_input.shape[1]
-        nr_priv_classes = y_priv_mdl.shape[1]
-        model_mask = model(train_priv_x, training=True)
+        # cls_targets = tf.constant([2, 3])
+        # cls_size = cls_targets.shape[0]
+        #
+        # batch_sz = x_input.shape[0]
+        # feature_sz = x_input.shape[1]
+        # nr_priv_classes = y_priv.shape[1]
+        model_mask = model(masked_x_input, training=True)
 
-        paddings = tf.constant([[0, 0], [0, 40 - model_mask.shape[1]]])
-        final_mask = tf.pad(model_mask, paddings)
+        # paddings = tf.constant([[0, 0], [0, 40 - model_mask.shape[1]]])
+        # final_mask = tf.pad(model_mask, paddings)
 
         # Applying the mask to the input
-        obfuscated_input = final_mask + x_input
+        obfuscated_input = model_mask + x_input
 
         # Calculating loss
         priv_mdl_logits = priv_mdl(obfuscated_input, training=False)
         # priv_mdl_true_loss = priv_mdl_loss_fn(tf.cast(y_priv_mdl, tf.float64), tf.cast(priv_mdl_logits, tf.float64))
 
+        # y_priv should already be masked by class
+        ploss = priv_loss_fn(y_priv, priv_mdl_logits)
+
         util_mdl_logits = util_mdl(obfuscated_input, training=False)
-        uloss = util_mdl_loss_fn(y_util_mdl, util_mdl_logits)
+        uloss = util_loss_fn(y_util, util_mdl_logits)
 
         tape.watch(model_mask)
-
-        wrong_y = tf.fill(y_priv_mdl.shape, 1/nr_priv_classes)
-        ploss = priv_mdl_loss_fn(wrong_y, priv_mdl_logits)
-
-        # # Fix to multiclass label mode
-        # wrong_y = tf.fill(y_util_mdl.shape, 1/nr_priv_classes)
-        # util_mdl_loss = util_mdl_loss_fn(wrong_y, util_mdl_logits)
 
         tloss = lambd * uloss + (1-lambd) * ploss
 
@@ -88,13 +87,3 @@ def triplet_loss(alpha, lambd, priv_mdl_loss, priv_mdla_loss, util_mdl_anchor_lo
     neg = tf.sqrt(tf.norm(priv_mdla_loss - priv_mdl_loss))
     final_loss = lambd * pos - (1 - lambd) * neg + alpha
     return final_loss
-
-
-def loss_function(lambd, loss, mdl_tgt_id, priv_mdl_loss, util_mdl_loss):
-    if mdl_tgt_id:
-        loss = lambd * util_mdl_loss - (1 - lambd) * priv_mdl_loss
-        # print((1-lambd) * priv_mdl_loss)
-        # print(lambd * util_mdl_loss)
-    else:
-        loss = lambd * priv_mdl_loss - (1 - lambd) * util_mdl_loss
-    return loss

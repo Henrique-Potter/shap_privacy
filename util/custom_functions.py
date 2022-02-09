@@ -114,8 +114,10 @@ def replace_outliers_by_quartile(data, m=1.5):
 
 
 def priv_util_plot_perf_data(priv_model_data, util_model_data, title):
-    lbl1 = "Gender ACC (Private)"
-    lbl2 = "Emotion ACC (Utility)"
+    # lbl1 = "Gender ACC (Private)"
+    # lbl2 = "Gender ACC (Utility)"
+    lbl1 = "Gender ACC (Utility)"
+    lbl2 = "Emotion ACC (Private)"
 
     nr_intensity_levels = len(priv_model_data)
     x_list = [x for x in range(1, nr_intensity_levels+1)]
@@ -123,14 +125,40 @@ def priv_util_plot_perf_data(priv_model_data, util_model_data, title):
     fig = plt.figure()
     fig.set_dpi(100)
 
-    plt.plot(x_list, priv_model_data, label=lbl1)
-    plt.plot(x_list, util_model_data, label=lbl2)
+    plt.plot(x_list, priv_model_data, label=lbl2)
+    plt.plot(x_list, util_model_data, label=lbl1)
     plt.legend()
     plt.title(title)
     plt.xlabel("Epochs")
     plt.ylabel("Accuracy")
 
-    plt.ylim([0, 1])
+    plt.ylim([0, 1.1])
+    plt.show()
+
+    return x_list
+
+
+def priv_plot_perf_data_by_class(priv_model_data):
+
+    title = "ACC by class"
+
+    epochs = len(priv_model_data[0][0])
+    x_list = [x for x in range(1, epochs+1)]
+
+    fig = plt.figure()
+    fig.set_dpi(100)
+
+    class_id = 0
+    for perf_dt in priv_model_data[1]:
+        plt.plot(x_list, perf_dt, label="Class %i" % class_id)
+        class_id += 1
+
+    plt.legend()
+    plt.title(title)
+    plt.xlabel("Epochs")
+    plt.ylabel("Accuracy")
+
+    plt.ylim([0, 1.1])
     plt.show()
 
     return x_list
