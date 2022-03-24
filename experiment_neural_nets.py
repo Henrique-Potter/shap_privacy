@@ -135,12 +135,52 @@ def build_emo_model_swish(input_sample):
 	model.add(Activation('softmax'))
 	opt = optimizers.Adam(learning_rate=0.0001)
 
-	loss_fn_emo = tf.keras.losses.CategoricalCrossentropy(label_smoothing=0.14)
+	loss_fn_emo = tf.keras.losses.CategoricalCrossentropy()
 	model.compile(loss=loss_fn_emo, optimizer=opt, metrics=['accuracy'])
 	model.summary()
 
 	return model
 
+
+def build_sv_model_swish(input_sample):
+	input_shape_width = input_sample.shape[1]
+	# input_shape_channels = input_sample.shape[2]
+
+	model = Sequential()
+
+	model.add(Dense(192, input_shape=(input_shape_width,), ))
+	model.add(Activation('swish'))
+	model.add(Dropout(0.2))
+
+	model.add(Dense(160,))
+	model.add(Activation('swish'))
+	model.add(Dropout(0.2))
+
+	model.add(Dense(128,))
+	model.add(Activation('swish'))
+	model.add(Dropout(0.2))
+
+	model.add(Dense(96, ))
+	model.add(Activation('swish'))
+	model.add(Dropout(0.2))
+
+	model.add(Dense(64,))
+	model.add(Activation('swish'))
+	model.add(Dropout(0.2))
+
+	model.add(Dense(32,))
+	model.add(Activation('swish'))
+	model.add(Dropout(0.2))
+
+	model.add(Dense(24))
+	model.add(Activation('softmax'))
+	opt = optimizers.Adam(learning_rate=0.0001)
+
+	loss_fn_emo = tf.keras.losses.CategoricalCrossentropy()
+	model.compile(loss=loss_fn_emo, optimizer=opt, metrics=['accuracy'])
+	model.summary()
+
+	return model
 
 def build_gen_model_swish(input_sample):
 	input_shape_width = input_sample.shape[1]
@@ -176,7 +216,8 @@ def build_gen_model_swish(input_sample):
 	model.add(Activation('softmax'))
 	opt = optimizers.Adam(learning_rate=0.001)
 
-	loss_fn_emo = tf.keras.losses.CategoricalCrossentropy(label_smoothing=0.14)
+	# loss_fn_emo = tf.keras.losses.CategoricalCrossentropy(label_smoothing=0.14)
+	loss_fn_emo = tf.keras.losses.BinaryCrossentropy()
 	model.compile(loss=loss_fn_emo, optimizer=opt, metrics=['accuracy'])
 	model.summary()
 
@@ -189,7 +230,7 @@ def build_emo_model_selu(input_sample):
 
 	model = Sequential()
 
-	model.add(Dense(192, input_shape=(input_shape_width,),kernel_initializer='lecun_normal'))
+	model.add(Dense(192, input_shape=(input_shape_width,), kernel_initializer='lecun_normal'))
 	model.add(Activation('selu'))
 	model.add(AlphaDropout(0.2))
 
@@ -367,10 +408,9 @@ def get_obfuscation_model(input_shape):
     model.add(Dense(64, kernel_regularizer='l2'))
     model.add(Activation('tanh'))
     model.add(Dropout(0.1))
-
     #model.add(Flatten())
     model.add(Dense(40, kernel_regularizer='l2'))
-    model.add(Activation('tanh'))
+    model.add(Activation('linear'))
 
     print(model.summary())
     return model
@@ -397,7 +437,7 @@ def get_obfuscation_model_tanh2(input_shape):
 
     #model.add(Flatten())
     model.add(Dense(40, kernel_regularizer='l2'))
-    model.add(Activation('tanh'))
+    model.add(Activation('linear'))
 
     print(model.summary())
     return model
@@ -416,16 +456,34 @@ def get_obfuscation_model_swish(input_shape):
     model.add(Activation('swish'))
     model.add(Dropout(0.1))
     model.add(Dense(40, ))
-    model.add(Activation('swish'))
+    model.add(Activation('linear'))
 
     print(model.summary())
     return model
 
 
-def get_obfuscation_model_selu():
+def get_obfuscation_model_gelu(input_shape):
 
     model = Sequential()
-    model.add(Dense(128, input_shape=(40, ), kernel_initializer='lecun_normal'))
+    model.add(Dense(128, input_shape=(input_shape,),))
+    model.add(Activation('gelu'))
+    model.add(Dropout(0.1))
+    model.add(Dense(128, ))
+    model.add(Activation('gelu'))
+    model.add(Dropout(0.1))
+    model.add(Dense(64,))
+    model.add(Activation('gelu'))
+    model.add(Dropout(0.1))
+    model.add(Dense(40, ))
+    model.add(Activation('linear'))
+
+    print(model.summary())
+    return model
+
+def get_obfuscation_model_selu(input_shape):
+
+    model = Sequential()
+    model.add(Dense(128, input_shape=(input_shape, ), kernel_initializer='lecun_normal'))
     model.add(Activation('selu'))
     model.add(AlphaDropout(0.1))
     model.add(Dense(128, kernel_initializer='lecun_normal'))
@@ -437,7 +495,7 @@ def get_obfuscation_model_selu():
 
     #model.add(Flatten())
     model.add(Dense(40,  kernel_initializer='lecun_normal'))
-    model.add(Activation('selu'))
+    model.add(Activation('linear'))
 
     print(model.summary())
     return model

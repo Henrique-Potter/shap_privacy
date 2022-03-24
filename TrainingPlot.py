@@ -7,8 +7,8 @@ save_per_epoch = 90
 
 class PlotLosses(tf.keras.callbacks.Callback):
 
-	def __init__(self, model_path, get_emotion_label):
-		self.get_emotion_label = get_emotion_label
+	def __init__(self, model_path, model_id):
+		self.model_id = model_id
 		self.model_path = model_path
 
 
@@ -38,7 +38,7 @@ class PlotLosses(tf.keras.callbacks.Callback):
 
 		if epoch % plot_per_epoch == 0 and epoch != 0:
 
-			if self.get_emotion_label:
+			if self.model_id:
 				plt.title("Voice Emotion CNN Model")
 			else:
 				plt.title("Voice Gender CNN Model")

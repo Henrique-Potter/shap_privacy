@@ -116,6 +116,7 @@ def extract_shap_values(shap_df_path, model, x_target_data, x_background_data, n
         np.save(shap_df_path, shap_vals, allow_pickle=True)
     else:
         shap_vals = np.load(shap_df_path, allow_pickle=True)
+
     return shap_vals
 
 
@@ -775,6 +776,8 @@ def extract_shap(model, shap_input, background_data, background_size, nr_classes
     background = background_data[:background_size]
     e = shap.DeepExplainer(model, background)
     shap_values = e.shap_values(shap_input, ranked_outputs=nr_classes, output_rank_order=rank_order, check_additivity=False)
+    # shap_values_raw = e.shap_values(shap_input, check_additivity=False)
+
     return shap_values, e
 
 

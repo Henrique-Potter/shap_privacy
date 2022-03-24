@@ -44,40 +44,49 @@ def spectrogram_image(y, sr, out, hop_length, n_mels):
 #     plot_confusion_matrix(cm, model_id, 0)
 
 
-def plot_confusion_matrix(cm_values, model_id, removal_level):
+def plot_confusion_matrix(cm_values, model_id, top_k):
+
     import matplotlib.pyplot as plt
     import seaborn as sn
     import pandas as pd
     cm_df = pd.DataFrame(cm_values)
     plt.figure(figsize=(10, 7))
-    plt.title("Confusion Matrix removal_level {}".format(removal_level))
+    plt.title("Confusion Matrix for top K = {}".format(top_k))
 
     if model_id == 0:
         axis_labels = ['Anger', 'Disgust', 'Fear', 'Happy', 'Neutral', 'Sad', 'Surprised']
-    else:
+        plt.title("Emotion Confusion Matrix for top K = {}".format(top_k))
+    elif model_id == 1:
         axis_labels = ['Male', 'Female']
+        plt.title("Gender Confusion Matrix for top K = {}".format(top_k))
+    elif model_id == 2:
+        axis_labels = [str(x) for x in range(cm_df.shape[0])]
+        plt.title("Speaker Verification Confusion Matrix for top K = {}".format(top_k))
 
     s = sn.heatmap(cm_df, xticklabels=axis_labels, yticklabels=axis_labels, annot=True)
     s.set(xlabel='Predicted', ylabel='Actual')
     plt.show()
 
 
-def calc_confusion_matrix(model, x_test, y_test, removal_level=0):
+def calc_confusion_matrix(y_predict, y_test, top_k):
     from sklearn.metrics import confusion_matrix
 
-    y_predict = np.asarray(model.predict(x_test))
+    true_labels = np.argmax(y_test, axis=1)
+    pred_labels = np.argmax(y_predict, axis=1)
 
-    true = np.argmax(y_test, axis=1)
-    pred = np.argmax(y_predict, axis=1)
-
-    cm = confusion_matrix(true, pred)
+    cm = confusion_matrix(true_labels, pred_labels)
 
     cm = cm.astype('float') / cm.sum(axis=1)[:, np.newaxis]
     cm = np.round(cm, 2)
 
-    model_id = 0 if len(y_test[0]) == 7 else 1
+    if len(y_test[0]) == 7:
+        model_id = 0
+    elif len(y_test[0]) == 2:
+        model_id = 1
+    elif len(y_test[0]) == 24:
+        model_id = 2
 
-    plot_confusion_matrix(cm, model_id, removal_level)
+    plot_confusion_matrix(cm, model_id, top_k)
 
 
 def reject_outliers(data, m=3):
@@ -113,19 +122,44 @@ def replace_outliers_by_quartile(data, m=1.5):
     return data2
 
 
-def priv_util_plot_perf_data(priv_model_data, util_model_data, title):
-    # lbl1 = "Gender ACC (Private)"
-    # lbl2 = "Gender ACC (Utility)"
-    lbl1 = "Gender ACC (Utility)"
-    lbl2 = "Emotion ACC (Private)"
+def priv_util_plot_f1_data(priv_e_model_data, priv_g_model_data, util_model_data, title):
+    lbl1 = "Speaker Verification F1 (Utility)"
+    lbl2 = "Emotion F1 (Private)"
+    lbl3 = "Gender F1 (Private)"
 
-    nr_intensity_levels = len(priv_model_data)
-    x_list = [x for x in range(1, nr_intensity_levels+1)]
+    epochs = len(priv_e_model_data)
+    x_list = [x for x in range(1, epochs+1)]
 
     fig = plt.figure()
     fig.set_dpi(100)
 
-    plt.plot(x_list, priv_model_data, label=lbl2)
+    plt.plot(x_list, priv_e_model_data, label=lbl2)
+    plt.plot(x_list, priv_g_model_data, label=lbl3)
+    plt.plot(x_list, util_model_data, label=lbl1)
+    plt.legend()
+    plt.title(title)
+    plt.xlabel("Epochs")
+    plt.ylabel("F1")
+
+    plt.ylim([0, 1.1])
+    plt.show()
+
+    return x_list
+
+
+def priv_util_plot_acc_data(priv_e_model_data, priv_g_model_data, util_model_data, title):
+    lbl1 = "Speaker Verification ACC (Utility)"
+    lbl2 = "Emotion ACC (Private)"
+    lbl3 = "Gender ACC (Private)"
+
+    epochs = len(priv_e_model_data)
+    x_list = [x for x in range(1, epochs+1)]
+
+    fig = plt.figure()
+    fig.set_dpi(100)
+
+    plt.plot(x_list, priv_e_model_data, label=lbl2)
+    plt.plot(x_list, priv_g_model_data, label=lbl3)
     plt.plot(x_list, util_model_data, label=lbl1)
     plt.legend()
     plt.title(title)
@@ -136,7 +170,6 @@ def priv_util_plot_perf_data(priv_model_data, util_model_data, title):
     plt.show()
 
     return x_list
-
 
 def priv_plot_perf_data_by_class(priv_model_data):
 
@@ -215,7 +248,7 @@ def validate_model(model, emo_model, gender_model, emo_test_dataset_batch, gen_t
 
 
 def plot_obf_loss(losses_perf):
-    title = "Obfuscator Loss per Epoch (lambda*util_loss + (1-lambd) * priv_loss)"
+    title = "Obfuscator Training Loss"
 
     losses_sz = len(losses_perf[0])
     x_list = [x for x in range(1, losses_sz+1)]
@@ -223,14 +256,14 @@ def plot_obf_loss(losses_perf):
     fig = plt.figure()
     fig.set_dpi(100)
     total_loss_perf = np.array(losses_perf[0])
-    trpriv_loss_perf = np.array(losses_perf[1])
-    trutil_loss_perf = np.array(losses_perf[2])
-    tepriv_loss_perf = np.array(losses_perf[3])
-    teutil_loss_perf = np.array(losses_perf[4])
+    tepriv_loss_perf = np.array(losses_perf[1])
+    tgpriv_loss_perf = np.array(losses_perf[2])
+    trutil_loss_perf = np.array(losses_perf[3])
 
-    plt.plot(x_list, total_loss_perf, label="Train Total Loss")
-    plt.plot(x_list, trpriv_loss_perf, label="Train Priv Model Loss")
-    plt.plot(x_list, trutil_loss_perf, label="Train Util Model Loss")
+    plt.plot(x_list, total_loss_perf, label="Total Loss")
+    plt.plot(x_list, tepriv_loss_perf, label="Emotion Model Loss")
+    plt.plot(x_list, tgpriv_loss_perf, label="Gender Model Loss")
+    plt.plot(x_list, trutil_loss_perf, label="Speaker Verification Model Loss")
 
     plt.legend()
     plt.title(title)
@@ -239,16 +272,15 @@ def plot_obf_loss(losses_perf):
     plt.yscale("log")
     plt.show()
 
-    plt.plot(x_list, tepriv_loss_perf, label="Test Priv Model Loss")
-    plt.plot(x_list, teutil_loss_perf, label="Test Util Model Loss")
-    plt.legend()
-    plt.title(title)
-    plt.xlabel("Epochs")
-    plt.ylabel("Loss")
-    plt.yscale("log")
-    plt.show()
-
-    return x_list
+    # plt.plot(x_list, tepriv_loss_perf, label="Emotion Model Loss")
+    # plt.plot(x_list, tgpriv_loss_perf, label="Gendere Model Loss")
+    # plt.plot(x_list, trutil_loss_perf, label="Speaker Verification Model Loss")
+    # plt.legend()
+    # plt.title(title)
+    # plt.xlabel("Epochs")
+    # plt.ylabel("Loss")
+    # plt.yscale("log")
+    # plt.show()
 
 
 def show_spectrogram(file):
@@ -281,9 +313,11 @@ def show_amplitude(data, sampling_rate):
 
 
 def mean_std_analysis(shap_list):
+
     class_index = 0
     nr_classes = len(shap_list)
     nr_features = len(shap_list[0][0])
+
     for shap_class_data in shap_list:
         shap_np = np.array(shap_class_data)
         # temp = replace_outliers_by_std(temp, 3)
@@ -310,6 +344,7 @@ def mean_std_analysis(shap_list):
     width = 0.4
     colors = ['r', 'g', 'b']
     bar_charts = []
+
     for x in range(nr_classes):
         shap_np = np.array(shap_list[x])
         # temp = replace_outliers_by_std(temp, 3)
@@ -318,6 +353,7 @@ def mean_std_analysis(shap_list):
         std = np.std(shap_np)
         bar = plt.bar(ind + width * x, summation, width, yerr=std, capsize=3)
         bar_charts.append(bar)
+
     plt.xlabel('Coefficient Order (Higher Order captures higher frequencies)', fontsize=22)
     plt.ylabel('Mel Frequency Cepstrum Coefficient (Mean)', fontsize=22)
     plt.title('Shap Value for all classes', fontsize=28)

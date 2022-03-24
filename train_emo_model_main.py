@@ -1,34 +1,30 @@
 from pathlib import Path
 import tensorflow as tf
 from data_processing import pre_process_data
-from experiment_neural_nets import build_emo_model2, build_emo_model_relu, build_emo_model_swish, build_emo_model_selu
+from experiment_neural_nets import build_emo_model_swish
 from util.training_engine import train_model
 from sklearn.preprocessing import StandardScaler
-import numpy as np
 
 print("Num GPUs Available: ", len(tf.config.list_physical_devices('GPU')))
 
-emo_model_path = 'emo_checkpoint/emodel_scalarized_data.h5'
-
-get_emotion_label = True
+model_id = 0
 
 
 def main():
 
-    audio_files_path = "./NNDatasets/audio/"
+    audio_files_path = "./NNDatasets/audio/ravdess"
+    db_name = 'ravdess'
+
+    emo_model_path = 'emo_checkpoint/emodel_scalarized_{}.h5'.format(db_name)
 
     print("Pre-processing audio files!")
-    x_traincnn, y_train, x_testcnn, y_test = pre_process_data(audio_files_path, augment_data=True)
+    x_train_mfcc, x_test_mfcc, y_emo_train_encoded, y_emo_test_encoded, _, _, _, _ = pre_process_data(audio_files_path, db_name )
     print("Pre-processing audio files Complete!")
-
-    # Squeeze extra dimension
-    x_traincnns = np.squeeze(x_traincnn)
-    x_testcnns = np.squeeze(x_testcnn)
 
     # Scaling and setting type to float32
     sc = StandardScaler()
-    x_train_cnn_scaled = sc.fit_transform(x_traincnns)
-    x_test_cnn_scaled = sc.transform(x_testcnns)
+    x_train_cnn_scaled = sc.fit_transform(x_train_mfcc)
+    x_test_cnn_scaled = sc.transform(x_test_mfcc)
 
     # x_train_cnn_scaled = np.reshape(x_train_cnn_scaled, x_traincnn.shape)
     # x_test_cnn_scaled = np.reshape(x_test_cnn_scaled, x_testcnn.shape)
@@ -37,28 +33,28 @@ def main():
     model = build_emo_model_swish(x_train_cnn_scaled)
     model_path = emo_model_path
 
+    y_train = y_emo_train_encoded
+    y_test = y_emo_test_encoded
+
     epochs = 400
     batch_size = 16
 
     print("Starting model training!")
     if not Path(model_path).exists():
-        train_model(model, model_path, batch_size, epochs, x_train_cnn_scaled, y_train, x_test_cnn_scaled, y_test, get_emotion_label)
+        train_model(model, model_path, batch_size, epochs, x_train_cnn_scaled, y_train, x_test_cnn_scaled, y_test, model_id)
 
-        test_acc = model.evaluate(x_testcnn, y_test, batch_size=16)
-        train_acc = model.evaluate(x_traincnn, y_train, batch_size=16)
+        test_acc = model.evaluate(x_test_cnn_scaled, y_test, batch_size=16)
+        train_acc = model.evaluate(x_train_cnn_scaled, y_train, batch_size=16)
         print("Emo Model Train perf is:{}, Test perf is:{}".format(train_acc, test_acc))
 
         emo_model = tf.keras.models.load_model(emo_model_path)
-        test_acc = emo_model.evaluate(x_testcnn, y_test, batch_size=128)
-        train_acc = emo_model.evaluate(x_traincnn, y_train, batch_size=128)
+        test_acc = emo_model.evaluate(x_test_cnn_scaled, y_test, batch_size=128)
+        train_acc = emo_model.evaluate(x_train_cnn_scaled, y_train, batch_size=128)
         print("Emo Model Train perf is:{}, Test perf is:{}".format(train_acc, test_acc))
     else:
         print("Check point found. Loading existent Emo Model.")
         # Restore the weights
-        model = tf.keras.models.load_model(model_path)
-        train_model(model, model_path, x_testcnn, x_traincnn, y_test, y_train, get_emotion_label)
-        test_acc = model.evaluate(x_testcnn, y_test, batch_size=128)
-        train_acc = model.evaluate(x_traincnn, y_train, batch_size=128)
+        pass
 
     print("Voice Emotion inference model Training complete!")
 
