@@ -2,3 +2,8 @@
 __pycache__/
 /data/
 NNDatasets/
+obf_checkpoint/bench/
+*.png
+obf_checkpoint/large_comp_sample/
+obf_checkpoint/large_swish/model_full_exec_results.npy
+obf_checkpoint/small_comp_sample/
