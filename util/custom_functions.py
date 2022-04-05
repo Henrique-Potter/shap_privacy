@@ -134,7 +134,7 @@ def priv_util_plot_f1_data(priv_e_model_data, priv_g_model_data, util_model_data
     plt.plot(x_placeholder, priv_g_model_data, label=lbl3)
     plt.plot(x_placeholder, util_model_data, label=lbl1)
 
-    if x_ticks is None:
+    if x_ticks is not None:
         plt.xticks(ticks=x_placeholder, labels=x_ticks)
 
     plt.legend()
@@ -409,10 +409,14 @@ def plot_obf_loss_from_dict(losses_perf):
     tepriv_loss_perf = np.array(losses_perf["Emotion model Loss"])
     tgpriv_loss_perf = np.array(losses_perf["Gender model Loss"])
     trutil_loss_perf = np.array(losses_perf["SV model Loss"])
+    train_loss_perf = np.array(losses_perf["Train Loss"])
+    test_loss_perf = np.array(losses_perf["Test Loss"])
 
     plt.plot(x_list, tepriv_loss_perf, label="Emotion Model Loss")
     plt.plot(x_list, tgpriv_loss_perf, label="Gender Model Loss")
     plt.plot(x_list, trutil_loss_perf, label="Speaker Verification Model Loss")
+    plt.plot(x_list, train_loss_perf, label="Train Total Loss")
+    plt.plot(x_list, test_loss_perf, label="Test Total Loss")
 
     plt.legend()
     plt.title(title)
@@ -536,21 +540,21 @@ def get_pruning_configs(end_step):
         #     final_sparsity=0.90,
         #     begin_step=0,
         #     end_step=end_step),
-        'const_sparsity_0.1': ConstantSparsity(
+        'const_sparsity_0.1': (ConstantSparsity(
             target_sparsity=0.1, begin_step=0
-        ),
-        'const_sparsity_0.3': ConstantSparsity(
+        ), 5),
+        'const_sparsity_0.3': (ConstantSparsity(
             target_sparsity=0.3, begin_step=0
-        ),
-        'const_sparsity_0.5': ConstantSparsity(
+        ), 60),
+        'const_sparsity_0.5': (ConstantSparsity(
             target_sparsity=0.5, begin_step=0
-        ),
-        'const_sparsity_0.7': ConstantSparsity(
+        ), 150),
+        'const_sparsity_0.7': (ConstantSparsity(
             target_sparsity=0.7, begin_step=0
-        ),
-        'const_sparsity_0.9': ConstantSparsity(
+        ), 250),
+        'const_sparsity_0.9': (ConstantSparsity(
             target_sparsity=0.9, begin_step=0
-        )
+        ), 600)
     }
 
     return attempt_configs
