@@ -1,5 +1,4 @@
 import glob
-import os
 import subprocess
 from pathlib import Path
 
@@ -23,7 +22,7 @@ for full_fname in tqdm(v_files):
     f_name_only = file_name[:-4]
     # Using ffmpeg to convert the mp4 in wav
     # Example command: "ffmpeg -i C:/test.mp4 -ab 160k -ac 2 -ar 44100 -vn audio.wav"
-    command = "ffmpeg -i {} -ab 160k -ac 2 -ar 44100 -vn {}".format(full_fname, audio_files_path + f_name_only+'.wav')
+    command = "ffmpeg -i {} -ab 160k -ac 2 -ar 44100 -vn {}".format(full_fname, audio_files_path + f_name_only + '.wav')
 
     try:
         subprocess.call(command, shell=True)

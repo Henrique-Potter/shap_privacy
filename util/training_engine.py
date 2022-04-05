@@ -1,15 +1,15 @@
 import matplotlib.pyplot as plt
 import numpy as np
+import tensorflow as tf
 
 from TrainingPlot import PlotLosses
 from util.PerClassMetrics import PerClassMetrics
-import tensorflow as tf
 
 
 def train_model(model, model_path, batch, epoch, x_traincnn, y_train, x_testcnn, y_test, model_id):
-
     cl_backs = [PlotLosses(model_path, model_id), PerClassMetrics(model, (x_testcnn, y_test), 64, int(model_id))]
-    cnnhistory = model.fit(x_traincnn, y_train, batch_size=batch, epochs=epoch, validation_data=(x_testcnn, y_test), callbacks=cl_backs)
+    cnnhistory = model.fit(x_traincnn, y_train, batch_size=batch, epochs=epoch, validation_data=(x_testcnn, y_test),
+                           callbacks=cl_backs)
     # Save the weights
     model.save(model_path)
     figure, axis = plt.subplots(2)
@@ -30,10 +30,9 @@ def train_model(model, model_path, batch, epoch, x_traincnn, y_train, x_testcnn,
 
 
 @tf.function
-def train_step(model, priv_emo_model, priv_gen_model, util_mdl, x_input, masked_x_input, y_util, y_e_priv, y_g_priv, util_loss_fn, priv_e_loss_fn, priv_g_loss_fn, lambd):
-
+def train_step(model, priv_emo_model, priv_gen_model, util_mdl, x_input, masked_x_input, y_util, y_e_priv, y_g_priv,
+               util_loss_fn, priv_e_loss_fn, priv_g_loss_fn, lambd):
     with tf.GradientTape() as tape:
-
         # cls_targets = tf.constant([2, 3])
         # cls_size = cls_targets.shape[0]
         #
@@ -75,7 +74,6 @@ def train_step(model, priv_emo_model, priv_gen_model, util_mdl, x_input, masked_
 
 
 def estimate_logits_from_loss(batch_size, nr_priv_classes, priv_mdl_loss_fn, priv_mdl_true_loss, wrong_y):
-
     cross_entropy = tf.divide(priv_mdl_true_loss, batch_size)
     highest_logit_value = tf.pow(2, -tf.cast(cross_entropy, tf.float64))
     left_over = 1 - highest_logit_value

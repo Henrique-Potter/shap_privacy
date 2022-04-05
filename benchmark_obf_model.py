@@ -1,8 +1,8 @@
 import glob
 import time
 
-import tensorflow as tf
 import numpy as np
+import tensorflow as tf
 
 
 def main():
@@ -48,7 +48,6 @@ def main():
 
 
 def plot_model_exec_time(plot_data, x_labels):
-
     import matplotlib.pyplot as plt
     # set width of bar
     barWidth = 0.25

@@ -1,8 +1,8 @@
-from obfuscation_functions import obfuscate_by_topk_class, general_obf_topk_class
+from obfuscation_functions import general_obf_topk_class
 
 
-def set_experiment_config(emo_model, gender_model, emo_gt_shap_list, gen_gt_shap_list, y_test_emo_encoded, y_test_gen_encoded):
-
+def set_experiment_config(emo_model, gender_model, emo_gt_shap_list, gen_gt_shap_list, y_test_emo_encoded,
+                          y_test_gen_encoded):
     emo_model_dict = {'model_name': "emotion_model",
                       'model': emo_model,
                       'ground_truth': y_test_emo_encoded,
@@ -27,9 +27,9 @@ def set_experiment_config(emo_model, gender_model, emo_gt_shap_list, gen_gt_shap
     obfuscation_f_list = []
 
     obf_by_gen_topk_class = {'obf_f_handler': general_obf_topk_class,
-                          'intensities': norm_noise_list,
-                          'kwargs': {'k': 6, 'force_y_match': 1, 'avg_reps': 1, 'protec_util': 1, 'p': 0},
-                          'label': 'obf_gen_totk_6_'}
+                             'intensities': norm_noise_list,
+                             'kwargs': {'k': 6, 'force_y_match': 1, 'avg_reps': 1, 'protec_util': 1, 'p': 0},
+                             'label': 'obf_gen_totk_6_'}
 
     # obf_by_topk_class2 = {'obf_f_handler': obfuscate_by_topk_class,
     #                       'intensities': norm_noise_list,

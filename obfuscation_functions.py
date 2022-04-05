@@ -2,7 +2,6 @@ import scipy
 
 
 def obfuscate_by_class(priv_shap_data, util_shap_data, x_input, y_input_test, obf_intensity, **kwargs):
-
     class_index = kwargs['class_index']
     priv_class_shap = priv_shap_data[class_index]
     negative_shap_mask = priv_class_shap < 0
@@ -198,7 +197,7 @@ def calculate_correlation(pclass_shap_list, priv_input):
 
 def plot_linear_gam(X, y):
     import pygam as pg
-    from pygam import LinearGAM, s, f, te
+    from pygam import s, f
     import matplotlib.pyplot as plt
 
     gam = pg.LinearGAM(f(0) + s(0) + s(0) + s(0) + s(0)).fit(X, y)
@@ -253,7 +252,7 @@ def general_by_class_mask(priv_model_id, util_model_id, priv_class_id, util_clas
 def norm_noise(shap_values, x_target, sigma):
     import numpy as np
 
-    shap_size = np.sum(shap_values>0)
+    shap_size = np.sum(shap_values > 0)
     if shap_size == 0:
         return x_target
 

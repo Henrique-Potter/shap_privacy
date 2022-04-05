@@ -1,4 +1,5 @@
 import tensorflow as tf
+
 from data_processing import *
 from experiment_neural_nets import build_fser_emo_model
 from util.training_engine import train_model
@@ -12,7 +13,6 @@ tf.random.set_seed(42)
 
 
 def main():
-
     audio_files_path = "./NNDatasets/audio/"
     n_mels = 64
 

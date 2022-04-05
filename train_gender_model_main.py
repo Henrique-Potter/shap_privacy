@@ -1,4 +1,5 @@
 from pathlib import Path
+
 import tensorflow as tf
 from sklearn.preprocessing import StandardScaler
 
@@ -12,7 +13,6 @@ e_label = False
 
 
 def main():
-
     audio_files_path = "./NNDatasets/audio/ravdess"
     db_name = 'ravdess'
 
@@ -36,7 +36,8 @@ def main():
 
     print("Starting model training!")
     if not Path(model_path).exists():
-        train_model(model, model_path, batch_size, epochs, x_train_cnn_scaled, y_tr_gen, x_test_cnn_scaled, y_te_gen, e_label)
+        train_model(model, model_path, batch_size, epochs, x_train_cnn_scaled, y_tr_gen, x_test_cnn_scaled, y_te_gen,
+                    e_label)
 
         test_acc = model.evaluate(x_test, y_te_gen, batch_size=128)
         train_acc = model.evaluate(x_train, y_tr_gen, batch_size=128)

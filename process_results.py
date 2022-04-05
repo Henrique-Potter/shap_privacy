@@ -1,6 +1,6 @@
-
 # datasets
 import glob
+
 import numpy as np
 
 
@@ -20,7 +20,6 @@ def main():
 
 
 def plot_best_acc_perf_by_k(emo_best_acc_list, gen_best_acc_list, sv_best_acc_list):
-
     import numpy as np
     import matplotlib.pyplot as plt
     # set width of bar
@@ -44,7 +43,6 @@ def plot_best_acc_perf_by_k(emo_best_acc_list, gen_best_acc_list, sv_best_acc_li
 
 
 def plot_best_f1_perf_by_k(emo_best_f1_list, gen_best_f1_list, sv_best_f1_list):
-
     import numpy as np
     import matplotlib.pyplot as plt
     # set width of bar

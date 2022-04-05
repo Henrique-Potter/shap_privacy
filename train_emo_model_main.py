@@ -1,9 +1,11 @@
 from pathlib import Path
+
 import tensorflow as tf
+from sklearn.preprocessing import StandardScaler
+
 from data_processing import pre_process_data
 from experiment_neural_nets import build_emo_model_swish
 from util.training_engine import train_model
-from sklearn.preprocessing import StandardScaler
 
 print("Num GPUs Available: ", len(tf.config.list_physical_devices('GPU')))
 
@@ -11,14 +13,14 @@ model_id = 0
 
 
 def main():
-
     audio_files_path = "./NNDatasets/audio/ravdess"
     db_name = 'ravdess'
 
     emo_model_path = 'emo_checkpoint/emodel_scalarized_{}.h5'.format(db_name)
 
     print("Pre-processing audio files!")
-    x_train_mfcc, x_test_mfcc, y_emo_train_encoded, y_emo_test_encoded, _, _, _, _ = pre_process_data(audio_files_path, db_name )
+    x_train_mfcc, x_test_mfcc, y_emo_train_encoded, y_emo_test_encoded, _, _, _, _ = pre_process_data(audio_files_path,
+                                                                                                      db_name)
     print("Pre-processing audio files Complete!")
 
     # Scaling and setting type to float32
@@ -41,7 +43,8 @@ def main():
 
     print("Starting model training!")
     if not Path(model_path).exists():
-        train_model(model, model_path, batch_size, epochs, x_train_cnn_scaled, y_train, x_test_cnn_scaled, y_test, model_id)
+        train_model(model, model_path, batch_size, epochs, x_train_cnn_scaled, y_train, x_test_cnn_scaled, y_test,
+                    model_id)
 
         test_acc = model.evaluate(x_test_cnn_scaled, y_test, batch_size=16)
         train_acc = model.evaluate(x_train_cnn_scaled, y_train, batch_size=16)

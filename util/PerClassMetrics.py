@@ -1,8 +1,7 @@
-
-from tensorflow import keras
 import numpy as np
+from tensorflow import keras
 
-from util.custom_functions import plot_confusion_matrix, calc_confusion_matrix
+from util.custom_functions import calc_confusion_matrix
 
 
 class PerClassMetrics(keras.callbacks.Callback):

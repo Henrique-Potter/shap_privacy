@@ -1,30 +1,27 @@
 import time
+from pathlib import Path
 
 import numpy as np
 import tensorflow as tf
-from pathlib import Path
-
-from tqdm import tqdm
-from tensorflow.keras.models import load_model
-from data_processing import pre_process_data, to_batchdataset
-from experiment_neural_nets import get_obfuscation_model_swish, get_obfuscation_model_tanh2, get_obfuscation_model, \
-    get_obfuscation_model_selu, get_obfuscation_model_gelu
-
-from shap_experiment import extract_shap_values, parse_shap_values_by_class, evaluate_by_class, export_shap_to_csv
 from sklearn.preprocessing import StandardScaler
+from tensorflow.keras.models import load_model
+from tqdm import tqdm
 
-from util.custom_functions import plot_obf_loss, calc_confusion_matrix, \
-    priv_plot_perf_data_by_class, mean_std_analysis, priv_util_plot_acc_data, priv_util_plot_f1_data
+from data_processing import pre_process_data, to_batchdataset
+from experiment_neural_nets import get_obfuscation_model_swish, get_obfuscation_model_large_swish
+from shap_experiment import extract_shap_values, parse_shap_values_by_class
+from util.custom_functions import plot_obf_loss_from_list, calc_confusion_matrix, priv_util_plot_acc_data, priv_util_plot_f1_data, \
+    collect_perf_metrics, obfuscate_input
 from util.training_engine import train_step
 
 
 def main():
-
     # get dataset
     print("Pre-processing audio files!")
     db_name = 'ravdess'
 
-    x_train, x_test, y_tr_emo, y_te_emo, y_tr_gen, y_te_gen, y_tr_id, y_te_id = pre_process_data(audio_files_path, db_name)
+    x_train, x_test, y_tr_emo, y_te_emo, y_tr_gen, y_te_gen, y_tr_sv, y_te_sv = pre_process_data(audio_files_path,
+                                                                                                 db_name)
     print("Pre-processing audio files Complete!")
 
     # Scaling and setting type to float32
@@ -34,18 +31,18 @@ def main():
 
     gender_nr_classes = len(y_tr_gen[0])
     emo_nr_classes = len(y_tr_emo[0])
-    id_nr_classes = len(y_tr_id[0])
+    sv_nr_classes = len(y_tr_sv[0])
 
     print("Loading shap values")
     # When using ranked outputs, the shapeley values are also sorted by rank (e.g., index 0 always has the shapeley of the model prediction)
     gen_shap_values = extract_shap_values(gen_shap_df_path, priv_gen_model, x_test_scaled, x_train_scaled, gender_nr_classes)
     emo_shap_values = extract_shap_values(emo_shap_df_path, priv_emo_model, x_test_scaled, x_train_scaled, emo_nr_classes)
-    id_shap_values = extract_shap_values(id_shap_df_path, util_sv_model, x_test_scaled, x_train_scaled, id_nr_classes)
+    sv_shap_values = extract_shap_values(sv_shap_df_path, util_sv_model, x_test_scaled, x_train_scaled, sv_nr_classes)
 
     # Isolating shap values by class.
     gen_gt_shap_list, gen_corr_shap_list = parse_shap_values_by_class(gen_shap_values, y_te_gen)
     emo_gt_shap_list, emo_corr_shap_list = parse_shap_values_by_class(emo_shap_values, y_te_emo)
-    id_gt_shap_list, id_corr_shap_list = parse_shap_values_by_class(id_shap_values, y_te_id)
+    sv_gt_shap_list, sv_corr_shap_list = parse_shap_values_by_class(sv_shap_values, y_te_sv)
 
     # model_name = 'gender_model_cr'
     # export_shap_to_csv(gen_corr_shap_list, model_name)
@@ -61,24 +58,23 @@ def main():
 
     shap_imp_order_emotion = summarize_shap_scores(emo_gt_shap_list)
     shap_imp_order_gen = summarize_shap_scores(gen_gt_shap_list)
-    shap_imp_order_id = summarize_shap_scores(id_gt_shap_list)
+    shap_imp_order_sv = summarize_shap_scores(sv_gt_shap_list)
 
-    shap_data_dict = {"emo": shap_imp_order_emotion, "gen": shap_imp_order_gen, "id": shap_imp_order_id}
+    shap_data_dict = {"emo": shap_imp_order_emotion, "gen": shap_imp_order_gen, "sv": shap_imp_order_sv}
 
     # ------------ Util/Priv Definitions ----------------
     priv_g_labels = (y_tr_gen, y_te_gen)
     priv_e_labels = (y_tr_emo, y_te_emo)
-    util_labels = (y_tr_id, y_te_id)
+    util_labels = (y_tr_sv, y_te_sv)
 
     for lambd in lambds:
 
-        # ------------ Util/Priv perf paths ----------------
+        # ------------ Util/Priv performance paths ----------------
         util_sv_perf_path = './data/nn_obfuscator_perf/sv_privacy/util_sv_data_cls{}_l{}_{}fts_e{}.npy'
         priv_emo_perf_path = './data/nn_obfuscator_perf/sv_privacy/priv_emo_data_cls{}_l{}_{}fts_e{}.npy'
         priv_gen_perf_path = './data/nn_obfuscator_perf/sv_privacy/priv_gen_data_cls{}_l{}_{}fts_e{}.npy'
 
-        for top_k_size in top_k_sizes:
-            # top_k_experiment = -top_k_experiment
+        for index, top_k_size in enumerate(top_k_sizes):
             global current_top_k
             current_top_k = top_k_size
 
@@ -86,7 +82,7 @@ def main():
             priv_emo_perf_path_full = set_file_name(lambd, top_k_size, priv_emo_perf_path)
             priv_gen_perf_path_full = set_file_name(lambd, top_k_size, priv_gen_perf_path)
 
-            if Path(util_perf_path_full).exists() or not Path(priv_emo_perf_path_full).exists():
+            if not Path(util_perf_path_full).exists() or not Path(priv_emo_perf_path_full).exists():
                 # ------------ Util/Priv Definitions ----------------
                 util_sv_perf_list, priv_e_perf_list, priv_g_perf_list = train_obfuscator_top_k_features(shap_data_dict,
                                                                                                         top_k_size,
@@ -97,18 +93,26 @@ def main():
                                                                                                         priv_g_labels,
                                                                                                         lambd)
 
-                np.save(util_perf_path_full, util_sv_perf_list,)
-                np.save(priv_emo_perf_path_full, priv_e_perf_list,)
-                np.save(priv_gen_perf_path_full, priv_g_perf_list,)
+                if len(util_sv_perf_list) == 0:
+                    print("All features have been removed, stopping the experiment.")
+                    return
+                elif util_sv_perf_list[0] == 999:
+                    print("Private features already evaluated k={} skipping to k={}.".format(top_k_size,
+                                                                                             top_k_sizes[index + 1]))
+                    continue
+
+                np.save(util_perf_path_full, util_sv_perf_list, )
+                np.save(priv_emo_perf_path_full, priv_e_perf_list, )
+                np.save(priv_gen_perf_path_full, priv_g_perf_list, )
             else:
                 print("Experiments with this configuration was already performed.")
 
 
-def train_obfuscator_top_k_features(shap_data_dict, topk_size, x_train, x_test, util_labels, priv_e_labels, priv_g_labels, lambd):
-
+def train_obfuscator_top_k_features(shap_data_dict, topk_size, x_train, x_test, util_labels, priv_e_labels,
+                                    priv_g_labels, lambd):
     gen_shap_idxs = shap_data_dict["gen"]
     emo_shap_idxs = shap_data_dict["emo"]
-    util_shap_idxs = shap_data_dict["id"]
+    util_shap_idxs = shap_data_dict["sv"]
 
     if topk_size > 0:
         priv1_feature_mask = gen_shap_idxs[-topk_size:]
@@ -125,24 +129,27 @@ def train_obfuscator_top_k_features(shap_data_dict, topk_size, x_train, x_test, 
     priv_features = np.union1d(priv1_feature_mask, priv2_feature_mask)
     model_features = np.setdiff1d(features, priv_features)
 
-    # masked_x_train = np.zeros(x_train.shape)
-    # masked_x_test = np.zeros(x_test.shape)
+    model_features.flags.writeable = False
+    features_map_hash = hash(model_features.data.tobytes())
+    # Addressing when all features are removed or its a repeated combination
+    # Using empty lists or lists with 999 different error types. TODO add proper exception handling.
+    if len(model_features) == 0:
+        return model_features, model_features, model_features
+    elif features_map_hash in feature_map_hash:
+        return [999], [999], [999]
+    else:
+        feature_map_hash[hash(model_features.data.tobytes())] = None
 
     masked_x_train = x_train[:, model_features]
     masked_x_test = x_test[:, model_features]
 
-    # masked_x_test, masked_x_train = GetTopKFeatures(shap_data_dict, topk_size, x_test, x_train)
-
     masked_input = (masked_x_train, masked_x_test)
 
-    # optimizer = tf.keras.optimizers.Adam(learning_rate=0.00001)
     optimizer = tf.keras.optimizers.Adam(learning_rate=0.00005)
-    # optimizer = tf.keras.optimizers.SGD(lr=0.001, momentum=0.9, decay=0.01)
-    # optimizer = tf.keras.optimizers.RMSprop(learning_rate=0.001, clipvalue=1.0, decay=6e-8)
 
     nn_input_sz = masked_x_train.shape
     # model = get_obfuscation_model_swish(nn_input_sz[1])
-    model = get_obfuscation_model_swish(nn_input_sz[1])
+    model = get_obfuscation_model_large_swish(nn_input_sz[1])
 
     save_model_meta_data(model_features, topk_size)
 
@@ -164,7 +171,6 @@ def train_obfuscator_top_k_features(shap_data_dict, topk_size, x_train, x_test, 
 
 def train_obfuscation_model(obf_model, x_train_input, x_test_input, masked_input, util_sv_labels, priv_e_labels,
                             priv_g_labels, optimizer, lambd):
-
     nr_e_classes = priv_e_labels[0][0].shape[0]
     nr_g_classes = priv_g_labels[0][0].shape[0]
     nr_sv_classes = util_sv_labels[0][0].shape[0]
@@ -176,7 +182,8 @@ def train_obfuscation_model(obf_model, x_train_input, x_test_input, masked_input
 
     # Convert to tensor batch iterators
     # Both models will always share the same X train and X test.
-    util_xy_tr_batch_dt = tf.data.Dataset.from_tensor_slices((x_train_input, util_sv_labels[0])).padded_batch(batch_size, drop_remainder=True)
+    util_xy_tr_batch_dt = tf.data.Dataset.from_tensor_slices((x_train_input, util_sv_labels[0])).padded_batch(
+        batch_size, drop_remainder=True)
 
     # Converting the feature specific input to tensors
     masked_x_tr_batch_dt, masked_x_te_batchdt = to_batchdataset(masked_input[0], masked_input[1], batch_size)
@@ -198,7 +205,6 @@ def train_obfuscation_model(obf_model, x_train_input, x_test_input, masked_input
     with tf.device('gpu:0'):
         for e in tqdm(range(epochs)):
             for (x_tr_batch, util_tr_y_batch), masked_x_tr_batch in zip(util_xy_tr_batch_dt, masked_x_tr_batch_dt):
-
                 tloss, peloss, pgloss, uloss, gradients, _ = train_step(obf_model,
                                                                         priv_emo_model,
                                                                         priv_gen_model,
@@ -234,45 +240,30 @@ def train_obfuscation_model(obf_model, x_train_input, x_test_input, masked_input
             priv_g_loss.reset_states()
             priv_sv_loss.reset_states()
 
-            if (e+1) % sample_results_rate == 0:
+            if (e + 1) % sample_results_rate == 0:
 
                 obf_input = obfuscate_input(obf_model, masked_x_te_batchdt, x_test_input)
 
-                sv_y_pred = collect_perf_metrics(util_sv_model, obf_input, util_sv_labels, util_sv_perf_list)
-                emo_y_pred = collect_perf_metrics(priv_emo_model, obf_input, priv_e_labels, priv_e_perf_list)
-                gen_y_pred = collect_perf_metrics(priv_gen_model, obf_input, priv_g_labels, priv_g_perf_list)
+                sv_y_pred = collect_perf_metrics(util_sv_model, obf_input, util_sv_labels[1], util_sv_perf_list)
+                emo_y_pred = collect_perf_metrics(priv_emo_model, obf_input, priv_e_labels[1], priv_e_perf_list)
+                gen_y_pred = collect_perf_metrics(priv_gen_model, obf_input, priv_g_labels[1], priv_g_perf_list)
 
-                # util_perf = util_sv_model.evaluate(obf_input, util_sv_labels[1], verbose=0)
-                # priv_e_perf = priv_emo_model.evaluate(obf_input, priv_e_labels[1], verbose=0)
-                # priv_g_perf = priv_gen_model.evaluate(obf_input, priv_g_labels[1], verbose=0)
+                # Plotting results.
+                if (e + 1) % plot_epoch_rate == 0:
+                    x_label = "Number of epochs"
+                    priv_util_plot_acc_data(priv_e_perf_list[0], priv_g_perf_list[0], util_sv_perf_list[0],
+                                            f'NN Obfuscator ACC Performance for {current_top_k}', x_label)
+                    priv_util_plot_f1_data(priv_e_perf_list[1], priv_g_perf_list[1], util_sv_perf_list[1],
+                                           f"NN Obfuscator F1 Performance {current_top_k}", x_label)
 
-                # --- By class evaluation ---
-                # evaluate_by_class(priv_emo_model, obf_input, priv_e_labels[1], e_by_class_perf)
-                # evaluate_by_class(priv_gen_model, obf_input, priv_g_labels[1], g_by_class_perf)
-                # evaluate_by_class(util_sv_model, obf_input, util_sv_labels[1], sv_by_class_perf)
+                    plot_obf_loss_from_list(final_loss_perf)
 
-                # util_sv_list.append(util_perf[1])
-                # priv_e_perf_list.append(priv_e_perf[1])
-                # priv_g_perf_list.append(priv_g_perf[1])
-                #
-                # final_loss_perf[4].append(util_perf[0])
-                # final_loss_perf[5].append(priv_e_perf[0])
-                # final_loss_perf[6].append(priv_g_perf[0])
-
-            # Plotting results.
-                if (e+1) % plot_epoch_rate == 0:
-                    priv_util_plot_acc_data(priv_e_perf_list[0], priv_g_perf_list[0], util_sv_perf_list[0], "NN Obfuscator ACC Performance")
-                    priv_util_plot_f1_data(priv_e_perf_list[1], priv_g_perf_list[1], util_sv_perf_list[1], "NN Obfuscator F1 Performance")
-
-                    plot_obf_loss(final_loss_perf)
-
-                if (e+1) % plot_epoch_rate == 0:
-
+                if (e + 1) % plot_epoch_rate == 0:
                     calc_confusion_matrix(sv_y_pred, util_sv_labels[1], current_top_k)
                     calc_confusion_matrix(gen_y_pred, priv_g_labels[1], current_top_k)
                     calc_confusion_matrix(emo_y_pred, priv_e_labels[1], current_top_k)
 
-                    obf_model.save(obf_model_path.format(current_top_k))
+                    save_model_data(obf_model, current_top_k)
 
     obf_model.reset_states()
     tf.keras.backend.clear_session()
@@ -292,24 +283,28 @@ def save_model_meta_data(model_features, topk_size):
             k_id = "-0" + str(abs(topk_size))
         else:
             k_id = "-" + str(abs(topk_size))
+
     np.save(obf_model_meta_data.format(k_id), model_features)
 
 
-def collect_perf_metrics(model, obf_input, util_sv_labels, perf_list):
-    from sklearn.metrics import classification_report
+def save_model_data(obf_model, topk_size):
 
-    y_predictions = model.predict(obf_input)
-    y_labels_pred = np.argmax(y_predictions, axis=1)
-    y_labels_true = np.argmax(util_sv_labels[1], axis=1)
-    class_report = classification_report(y_labels_true, y_labels_pred, zero_division=0, output_dict=True)
-    perf_list[0].append(class_report['accuracy'])
-    perf_list[1].append(class_report['macro avg']['f1-score'])
+    if topk_size >= 0:
+        if topk_size <= 9:
+            k_id = "+0" + str(topk_size)
+        else:
+            k_id = "+" + str(topk_size)
+    else:
+        if topk_size >= -9:
+            k_id = "-0" + str(abs(topk_size))
+        else:
+            k_id = "-" + str(abs(topk_size))
 
-    return y_predictions
+    tf.saved_model.save(obf_model, obf_model_lite_path.format(k_id))
+    obf_model.save(obf_model_keras_path.format(k_id))
 
 
 def summarize_shap_scores(shap_scores_list):
-
     shap_all_classes_mean = np.mean(np.concatenate(shap_scores_list), axis=0)
     shap_all_classes_mean_abs = np.mean(np.abs(np.concatenate(shap_scores_list)), axis=0)
     shap_importance_sorted_by_mean = np.argsort(shap_all_classes_mean)
@@ -322,7 +317,6 @@ def summarize_shap_scores(shap_scores_list):
 
 
 def create_label_mask(priv_classes, priv_labels):
-
     tr_priv_labels = priv_labels[0].copy()
     nr_classes = tr_priv_labels.shape[1]
 
@@ -356,24 +350,6 @@ def print_gen_logits(gen_train_y, priv_mdl_logits):
     print(female_logit_avg)
 
 
-def obfuscate_input(model, obfuscator_x_input, clean_x_innput):
-
-    nr_features = clean_x_innput[0].shape[0]
-
-    # Generating the mask
-    start = time.time()
-    obf_masks = model.predict(obfuscator_x_input)
-    end = time.time()
-
-    print("Time to create mask with {} features: {}".format(nr_features, end-start))
-
-    mask_size = obf_masks[0].shape[0]
-    padded_masks = np.pad(obf_masks, [(0, 0), (0, nr_features - mask_size)], mode='constant', constant_values=0)
-    # Adding the mask to the input
-    obf_input = clean_x_innput + padded_masks
-    return obf_input
-
-
 def set_file_name(lambd, top_k_size, util_perf_path):
     util_perf_path_full = util_perf_path.format(str(priv_classes), str(lambd), top_k_size, epochs)
     return util_perf_path_full
@@ -385,7 +361,7 @@ def GetTopKFeatures(shap_data_dict, topk_size, x_test, x_train):
     if topk_size > 0:
         priv_feature_mask = p_shap_idxs[-topk_size:]
     else:
-        priv_feature_mask = p_shap_idxs[:-topk_size]
+        priv_feature_mask = p_shap_idxs[:topk_size]
     # Populating only top k/bot k features to be used by the obfuscator training
     masked_x_train = np.zeros(x_train.shape)
     masked_x_test = np.zeros(x_test.shape)
@@ -395,19 +371,19 @@ def GetTopKFeatures(shap_data_dict, topk_size, x_test, x_train):
 
 
 if __name__ == "__main__":
-
     emo_model_path = "emo_checkpoint/emodel_scalarized_ravdess.h5"
     id_model_path = "sv_model_checkpoint/sver_model_scalarized_data.h5"
     gender_model_path = "gmodel_checkpoint/gmodel_scaled_ravdess.h5"
 
-    obf_model_path = 'obf_checkpoint/model_obf_k_{}.h5'
-    obf_model_meta_data = 'obf_checkpoint/model_obf_meta_k_{}.h5'
+    obf_model_lite_path = 'obf_checkpoint/lite/model_obf_k_{}'
+    obf_model_keras_path = 'obf_checkpoint/model_obf_k_{}'
+    obf_model_meta_data = 'obf_checkpoint/model_obf_meta_k_{}'
 
     # datasets
     audio_files_path = "./NNDatasets/audio"
     gen_shap_df_path = './data/shapeley/gen_shap_df.npy'
     emo_shap_df_path = './data/shapeley/emo_shap_df.npy'
-    id_shap_df_path = './data/shapeley/id_shap_df.npy'
+    sv_shap_df_path = './data/shapeley/id_shap_df.npy'
 
     print("Loading trained Neural Nets")
 
@@ -420,15 +396,17 @@ if __name__ == "__main__":
     # lambds = [x/10 for x in range(1, 10)]
 
     priv_classes = []
-    top_k_sizes = [-x for x in range(0, 41, 1)]
+    top_k_sizes = [-x for x in range(0, 40, 1)]
     current_top_k = 0
-    # top_k_sizes = [0]
+    top_k_sizes = [0, -10, -20]
 
     batch_size = 32
     epochs = 300
     sample_results_rate = 10
 
-    #metrics
+    # metrics
     plot_epoch_rate = 300
+
+    feature_map_hash = {}
 
     main()
