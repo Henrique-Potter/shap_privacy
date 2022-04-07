@@ -30,8 +30,9 @@ def train_model(model, model_path, batch, epoch, x_traincnn, y_train, x_testcnn,
 
 
 @tf.function
-def train_step(model, priv_emo_model, priv_gen_model, util_mdl, x_input, masked_x_input, y_util, y_e_priv, y_g_priv,
+def train_step(model, feature_map, priv_emo_model, priv_gen_model, util_mdl, x_input, masked_x_input, y_util, y_e_priv, y_g_priv,
                util_loss_fn, priv_e_loss_fn, priv_g_loss_fn, lambd):
+
     with tf.GradientTape() as tape:
         # cls_targets = tf.constant([2, 3])
         # cls_size = cls_targets.shape[0]
@@ -41,12 +42,24 @@ def train_step(model, priv_emo_model, priv_gen_model, util_mdl, x_input, masked_
         # nr_priv_classes = y_priv.shape[1]
         model_mask = model(masked_x_input, training=True)
         tape.watch(model_mask)
-
+        v_copy2 = tf.identity(x_input)
         # paddings = tf.constant([[0, 0], [0, 40 - model_mask.shape[1]]])
         # final_mask = tf.pad(model_mask, paddings)
 
+        output_list = []
+        feature_index = 0
+        for index in range(x_input.shape[1]):
+            tensor_cl = x_input[:, index]
+            equal = tf.math.equal(index, feature_map)
+            contains = tf.reduce_any(equal)
+            if contains:
+                tensor_cl = tensor_cl + model_mask[:, feature_index]
+                feature_index += 1
+
+            output_list.append(tensor_cl)
+        obfuscated_input = tf.stack(output_list, axis=1)
         # Applying the mask to the input
-        obfuscated_input = model_mask + x_input
+        # obfuscated_input = model_mask + x_input
         # obfuscated_input = model_mask
 
         # Calculating emotion loss
@@ -59,12 +72,12 @@ def train_step(model, priv_emo_model, priv_gen_model, util_mdl, x_input, masked_
         # Calculating gen loss
         gpriv_mdl_logits = priv_gen_model(obfuscated_input, training=False)
         # pgloss = (1-lambd)/6 * priv_g_loss_fn(y_g_priv, priv_mdl_logits)
-        pgloss = 2 * priv_g_loss_fn(y_g_priv, gpriv_mdl_logits)
+        pgloss = 1 * priv_g_loss_fn(y_g_priv, gpriv_mdl_logits)
 
         util_mdl_logits = util_mdl(obfuscated_input, training=False)
         # uloss = -1*tf.math.pow(0.25, util_loss_fn(y_util, util_mdl_logits))+1
         # uloss = lambd * util_loss_fn(y_util, util_mdl_logits)
-        uloss = 7 * util_loss_fn(y_util, util_mdl_logits)
+        uloss = 10 * util_loss_fn(y_util, util_mdl_logits)
 
         tloss = peloss + pgloss + uloss
 

@@ -20,8 +20,7 @@ def main():
     print("Pre-processing audio files!")
     db_name = 'ravdess'
 
-    x_train, x_test, y_tr_emo, y_te_emo, y_tr_gen, y_te_gen, y_tr_sv, y_te_sv = pre_process_data(audio_files_path,
-                                                                                                 db_name)
+    x_train, x_test, y_tr_emo, y_te_emo, y_tr_gen, y_te_gen, y_tr_sv, y_te_sv = pre_process_data(audio_files_path, db_name)
     print("Pre-processing audio files Complete!")
 
     # Scaling and setting type to float32
@@ -70,9 +69,9 @@ def main():
     for lambd in lambds:
 
         # ------------ Util/Priv performance paths ----------------
-        util_sv_perf_path = './data/nn_obfuscator_perf/sv_privacy/util_sv_data_cls{}_l{}_{}fts_e{}.npy'
-        priv_emo_perf_path = './data/nn_obfuscator_perf/sv_privacy/priv_emo_data_cls{}_l{}_{}fts_e{}.npy'
-        priv_gen_perf_path = './data/nn_obfuscator_perf/sv_privacy/priv_gen_data_cls{}_l{}_{}fts_e{}.npy'
+        util_sv_perf_path = './data/nn_obfuscator_perf/sv_privacy/util_sv_data_cls{}_l{}_{}fts_e{}_util5.npy'
+        priv_emo_perf_path = './data/nn_obfuscator_perf/sv_privacy/priv_emo_data_cls{}_l{}_{}fts_e{}_util5.npy'
+        priv_gen_perf_path = './data/nn_obfuscator_perf/sv_privacy/priv_gen_data_cls{}_l{}_{}fts_e{}_util5.npy'
 
         for index, top_k_size in enumerate(top_k_sizes):
             global current_top_k
@@ -105,7 +104,7 @@ def main():
                 np.save(priv_emo_perf_path_full, priv_e_perf_list, )
                 np.save(priv_gen_perf_path_full, priv_g_perf_list, )
             else:
-                print("Experiments with this configuration was already performed.")
+                print("Experiments with this configuration have been performed.")
 
 
 def train_obfuscator_top_k_features(shap_data_dict, topk_size, x_train, x_test, util_labels, priv_e_labels,
@@ -127,7 +126,8 @@ def train_obfuscator_top_k_features(shap_data_dict, topk_size, x_train, x_test, 
     # Guarantees some location information since its sorted and diff will only remove
     features = [x for x in range(40)]
     priv_features = np.union1d(priv1_feature_mask, priv2_feature_mask)
-    model_features = np.setdiff1d(features, priv_features)
+    priv_util_features = np.union1d(priv_features, util_shap_idxs[:-topk_size])
+    model_features = np.setdiff1d(features, priv_util_features)
 
     model_features.flags.writeable = False
     features_map_hash = hash(model_features.data.tobytes())
@@ -148,13 +148,14 @@ def train_obfuscator_top_k_features(shap_data_dict, topk_size, x_train, x_test, 
     optimizer = tf.keras.optimizers.Adam(learning_rate=0.00005)
 
     nn_input_sz = masked_x_train.shape
-    # model = get_obfuscation_model_swish(nn_input_sz[1])
-    model = get_obfuscation_model_large_swish(nn_input_sz[1])
+    model = get_obfuscation_model_swish(nn_input_sz[1])
+    # model = get_obfuscation_model_large_swish(nn_input_sz[1])
 
     save_model_meta_data(model_features, topk_size)
 
     # if not Path(obf_model_path).exists():
     obf_model, util_sv_perf_list, priv_e_perf_list, priv_g_perf_list = train_obfuscation_model(model,
+                                                                                               model_features,
                                                                                                x_train,
                                                                                                x_test,
                                                                                                masked_input,
@@ -169,7 +170,7 @@ def train_obfuscator_top_k_features(shap_data_dict, topk_size, x_train, x_test, 
     return util_sv_perf_list, priv_e_perf_list, priv_g_perf_list
 
 
-def train_obfuscation_model(obf_model, x_train_input, x_test_input, masked_input, util_sv_labels, priv_e_labels,
+def train_obfuscation_model(obf_model, model_features, x_train_input, x_test_input, masked_input, util_sv_labels, priv_e_labels,
                             priv_g_labels, optimizer, lambd):
     nr_e_classes = priv_e_labels[0][0].shape[0]
     nr_g_classes = priv_g_labels[0][0].shape[0]
@@ -180,10 +181,11 @@ def train_obfuscation_model(obf_model, x_train_input, x_test_input, masked_input
     priv_e_label = tf.constant(np.tile(np.ones(nr_e_classes) * 1 / nr_e_classes, (batch_size, 1)))
     priv_g_label = tf.constant(np.tile(np.ones(nr_g_classes) * 1 / nr_g_classes, (batch_size, 1)))
 
+    model_features_tf = tf.constant(model_features)
+
     # Convert to tensor batch iterators
     # Both models will always share the same X train and X test.
-    util_xy_tr_batch_dt = tf.data.Dataset.from_tensor_slices((x_train_input, util_sv_labels[0])).padded_batch(
-        batch_size, drop_remainder=True)
+    util_xy_tr_batch_dt = tf.data.Dataset.from_tensor_slices((x_train_input, util_sv_labels[0])).padded_batch(batch_size, drop_remainder=True)
 
     # Converting the feature specific input to tensors
     masked_x_tr_batch_dt, masked_x_te_batchdt = to_batchdataset(masked_input[0], masked_input[1], batch_size)
@@ -206,6 +208,7 @@ def train_obfuscation_model(obf_model, x_train_input, x_test_input, masked_input
         for e in tqdm(range(epochs)):
             for (x_tr_batch, util_tr_y_batch), masked_x_tr_batch in zip(util_xy_tr_batch_dt, masked_x_tr_batch_dt):
                 tloss, peloss, pgloss, uloss, gradients, _ = train_step(obf_model,
+                                                                        model_features_tf,
                                                                         priv_emo_model,
                                                                         priv_gen_model,
                                                                         util_sv_model,
@@ -242,7 +245,7 @@ def train_obfuscation_model(obf_model, x_train_input, x_test_input, masked_input
 
             if (e + 1) % sample_results_rate == 0:
 
-                obf_input = obfuscate_input(obf_model, masked_x_te_batchdt, x_test_input)
+                obf_input = obfuscate_input(obf_model, masked_x_te_batchdt, x_test_input, model_features)
 
                 sv_y_pred = collect_perf_metrics(util_sv_model, obf_input, util_sv_labels[1], util_sv_perf_list)
                 emo_y_pred = collect_perf_metrics(priv_emo_model, obf_input, priv_e_labels[1], priv_e_perf_list)
@@ -375,9 +378,9 @@ if __name__ == "__main__":
     id_model_path = "sv_model_checkpoint/sver_model_scalarized_data.h5"
     gender_model_path = "gmodel_checkpoint/gmodel_scaled_ravdess.h5"
 
-    obf_model_lite_path = 'obf_checkpoint/lite/model_obf_k_{}'
-    obf_model_keras_path = 'obf_checkpoint/model_obf_k_{}'
-    obf_model_meta_data = 'obf_checkpoint/model_obf_meta_k_{}'
+    obf_model_lite_path = 'obf_checkpoint/lite/model_obf_k_{}_util5'
+    obf_model_keras_path = 'obf_checkpoint/model_obf_k_{}_util5'
+    obf_model_meta_data = 'obf_checkpoint/model_obf_meta_k_{}_util5'
 
     # datasets
     audio_files_path = "./NNDatasets/audio"
@@ -398,14 +401,14 @@ if __name__ == "__main__":
     priv_classes = []
     top_k_sizes = [-x for x in range(0, 40, 1)]
     current_top_k = 0
-    top_k_sizes = [0, -10, -20]
+    top_k_sizes = [-10, -20]
 
     batch_size = 32
     epochs = 300
     sample_results_rate = 10
 
     # metrics
-    plot_epoch_rate = 300
+    plot_epoch_rate = 50
 
     feature_map_hash = {}
 

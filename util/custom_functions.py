@@ -228,14 +228,16 @@ def priv_util_plot_acc_data(priv_e_model_data, priv_g_model_data, util_model_dat
     return x_ticks
 
 
-def obfuscate_input(model, obfuscator_x_input, clean_x_innput):
+def obfuscate_input(model, obfuscator_x_input, clean_x_innput, model_features):
+    input_temp = clean_x_innput.copy()
 
     # Generating the mask
     obf_masks = model.predict(obfuscator_x_input)
 
     # Adding the mask to the input
-    obf_input = clean_x_innput + obf_masks
-    return obf_input
+    input_temp[:, model_features] = input_temp[:, model_features] + obf_masks
+
+    return input_temp
 
 
 def add_list_in_dict(dictionary, key, val):

@@ -12,6 +12,7 @@ from tqdm import tqdm
 
 
 def pre_process_data(audio_files_path, db_name, n_mfcc=40):
+
     train_x_mfcc_path = 'data/audio_train_data_mfcc{}_{}_np.npy'.format(n_mfcc, db_name)
     test_x_mfcc_path = 'data/audio_test_data_mfcc{}_{}_np.npy'.format(n_mfcc, db_name)
 
@@ -27,7 +28,8 @@ def pre_process_data(audio_files_path, db_name, n_mfcc=40):
     # Assuming that y has to exist if x exists
     if not Path(train_x_mfcc_path).exists() and not Path(test_x_mfcc_path).exists():
 
-        audio_files = glob.glob("{}/**/*.wav".format(audio_files_path), recursive=True)
+        audio_data_full_path = Path(audio_files_path).joinpath(db_name)
+        audio_files = glob.glob("{}/**/*.wav".format(audio_data_full_path), recursive=True)
 
         lst = []
         for full_fname in tqdm(audio_files):
