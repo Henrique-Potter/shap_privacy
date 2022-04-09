@@ -77,8 +77,8 @@ def print_attempt_infos(attempt_infos):
 
 
 def inspect_weigths(name, model, verbose=False):
-    nlayer=0
-    tot_num_of_weights=0
+    nlayer = 0
+    tot_num_of_weights = 0
     tot_num_of_nonzero_weights=0
     if verbose:
         print('Model:', name)

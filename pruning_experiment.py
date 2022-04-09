@@ -1,4 +1,3 @@
-import numpy as np
 from sklearn.model_selection import train_test_split
 
 
@@ -33,8 +32,8 @@ model_org.summary()
 
 batch_size = 80
 epochs = 100
-loss=losses.MeanSquaredError(reduction='auto', name='mean_squared_error')
-optimizer=optimizers.Adam()
+loss = losses.MeanSquaredError(reduction='auto', name='mean_squared_error')
+optimizer = optimizers.Adam()
 
 model_org.compile(loss=loss, optimizer=optimizer)
 
@@ -79,7 +78,7 @@ attempt_infos.append(ai_org)
 
 end_step = np.ceil(len(x_train) / batch_size).astype(np.int32) * epochs
 
-attempt_configs = [
+attempt_configs = {
     AttemptConfig('poly decay 10/50', PolynomialDecay(
         initial_sparsity=0.10,
         final_sparsity=0.50,
@@ -125,7 +124,7 @@ attempt_configs = [
     AttemptConfig('const sparsity 0.9', ConstantSparsity(
         target_sparsity=0.9, begin_step=0
         ))
-]
+}
 
 for ac in attempt_configs:
     model_pruning = build_pruning_model(model_org, ac.pruning_schedule)
@@ -144,9 +143,9 @@ for ac in attempt_configs:
     y_pred_pruned = model_pruned.predict(x_test)[:, 0]
     error_pruned = loss(y_test, y_pred_pruned).numpy()
     unzippedh5_size_pruned, zippedh5_size_pruned = retrieve_size_of_model(model_pruned)
-    unzippedlt_size_pruned, zippedlt_size_pruned = retrieve_size_of_lite_model(model_pruned)
+    unzippedlt_size_pruned, zippedlt_size_pruned, _ = retrieve_size_of_lite_model(model_pruned)
 
-    mi_pruned = AttemptInfo (
+    mi_pruned = AttemptInfo(
         ac.name,
         num_of_w_pruned, num_of_nz_w_pruned, num_of_z_w_pruned,
         unzippedh5_size_pruned, zippedh5_size_pruned,

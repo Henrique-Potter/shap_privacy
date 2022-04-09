@@ -1,38 +1,41 @@
 import glob
-
-import numpy as np
-import librosa
-from pathlib import Path
-from sklearn.model_selection import train_test_split
-import pandas as pd
 import time
-import cv2
-from pandas import Series
+from pathlib import Path
 
+import cv2
+import librosa
+import numpy as np
+import pandas as pd
+from pandas import Series
+from sklearn.model_selection import train_test_split
 from tqdm import tqdm
 
 
-def pre_process_data(audio_files_path, n_mfcc=40):
+def pre_process_data(audio_files_path, db_name, n_mfcc=40):
 
-    train_x_mfcc_path = 'data/audio_train_data_mfcc{}_np.npy'.format(n_mfcc)
-    test_x_mfcc_path = 'data/audio_test_data_mfcc{}_np.npy'.format(n_mfcc)
+    train_x_mfcc_path = 'data/audio_train_data_mfcc{}_{}_np.npy'.format(n_mfcc, db_name)
+    test_x_mfcc_path = 'data/audio_test_data_mfcc{}_{}_np.npy'.format(n_mfcc, db_name)
 
-    train_y_emo_mfcc_path = 'data/audio_emo_train_y_data_{}_np.npy'.format(n_mfcc)
-    test_y_emo_mfcc_path = 'data/audio_emo_test_y_data_{}_np.npy'.format(n_mfcc)
+    train_y_emo_mfcc_path = 'data/audio_emo_train_y_data_{}_{}_np.npy'.format(n_mfcc, db_name)
+    test_y_emo_mfcc_path = 'data/audio_emo_test_y_data_{}_{}_np.npy'.format(n_mfcc, db_name)
 
-    train_y_gen_mfcc_path = 'data/audio_gen_train_y_data_{}_np.npy'.format(n_mfcc)
-    test_y_gen_mfcc_path = 'data/audio_gen_test_y_data_{}_np.npy'.format(n_mfcc)
+    train_y_gen_mfcc_path = 'data/audio_gen_train_y_data_{}_{}_np.npy'.format(n_mfcc, db_name)
+    test_y_gen_mfcc_path = 'data/audio_gen_test_y_data_{}_{}_np.npy'.format(n_mfcc, db_name)
+
+    train_y_sv_mfcc_path = 'data/audio_sv_train_y_data_{}_{}_np.npy'.format(n_mfcc, db_name)
+    test_y_sv_mfcc_path = 'data/audio_sv_test_y_data_{}_{}_np.npy'.format(n_mfcc, db_name)
 
     # Assuming that y has to exist if x exists
     if not Path(train_x_mfcc_path).exists() and not Path(test_x_mfcc_path).exists():
 
-        audio_files = glob.glob("{}/**/*.wav".format(audio_files_path), recursive=True)
+        audio_data_full_path = Path(audio_files_path).joinpath(db_name)
+        audio_files = glob.glob("{}/**/*.wav".format(audio_data_full_path), recursive=True)
 
         lst = []
         for full_fname in tqdm(audio_files):
             lst.append(full_fname)
 
-        audio_raw_df_path = 'data/audio_data_raw_df.pkl'
+        audio_raw_df_path = 'data/audio_preprocess/audio_{}_raw_df.pkl'.format(db_name)
 
         if not Path(audio_raw_df_path).exists():
 
@@ -47,9 +50,17 @@ def pre_process_data(audio_files_path, n_mfcc=40):
             audio_raw_df = pd.read_pickle(audio_raw_df_path)
             print("Loading pre extracted raw audio from pkl file successful.")
 
-        X_train, X_test, y_emo_train, y_emo_test = train_test_split(audio_raw_df.iloc[:, :-2], audio_raw_df.iloc[:, -2:-1], test_size=0.2, random_state=6)
+        X_train, X_test, y_labels_train, y_labels_test = train_test_split(audio_raw_df.iloc[:, :-3],
+                                                                          audio_raw_df.iloc[:, -3:], test_size=0.2,
+                                                                          random_state=6)
 
-        X_train, X_test, y_gen_train, y_gen_test = train_test_split(audio_raw_df.iloc[:, :-2], audio_raw_df.iloc[:, -1:], test_size=0.2, random_state=6)
+        y_emo_train = y_labels_train.iloc[:, :1]
+        y_gen_train = y_labels_train.iloc[:, 1:2]
+        y_id_train = y_labels_train.iloc[:, 2:3]
+
+        y_emo_test = y_labels_test.iloc[:, :1]
+        y_gen_test = y_labels_test.iloc[:, 1:2]
+        y_id_test = y_labels_test.iloc[:, 2:3]
 
         from keras.utils import np_utils
         from sklearn.preprocessing import LabelEncoder
@@ -57,49 +68,60 @@ def pre_process_data(audio_files_path, n_mfcc=40):
         X_train_np = np.array(X_train)
         y_emo_train_np = np.ravel(np.array(y_emo_train))
         y_gen_train_np = np.ravel(np.array(y_gen_train))
+        y_id_train_np = np.ravel(np.array(y_id_train))
+
         X_test_np = np.array(X_test)
         y_emo_test_np = np.ravel(np.array(y_emo_test))
         y_gen_test_np = np.ravel(np.array(y_gen_test))
+        y_id_test_np = np.ravel(np.array(y_id_test))
 
         lb = LabelEncoder()
-        y_emo_train_encoded = np_utils.to_categorical(lb.fit_transform(y_emo_train_np))
-        y_gen_train_encoded = np_utils.to_categorical(lb.fit_transform(y_gen_train_np))
+        y_emo_tr = np_utils.to_categorical(lb.fit_transform(y_emo_train_np))
+        y_gen_tr = np_utils.to_categorical(lb.fit_transform(y_gen_train_np))
+        y_id_tr = np_utils.to_categorical(lb.fit_transform(y_id_train_np))
 
-        y_emo_test_encoded = np_utils.to_categorical(lb.fit_transform(y_emo_test_np))
-        y_gen_test_encoded = np_utils.to_categorical(lb.fit_transform(y_gen_test_np))
+        y_emo_te = np_utils.to_categorical(lb.fit_transform(y_emo_test_np))
+        y_gen_te = np_utils.to_categorical(lb.fit_transform(y_gen_test_np))
+        y_id_te = np_utils.to_categorical(lb.fit_transform(y_id_test_np))
 
         print("Augmenting data and extracting train MFCCs!")
         all_aug_data = extract_mfcc_from_raw_ndarray_aug_shift(X_train_np, n_mfcc, 5000)
-        x_train_mfcc = np.concatenate(all_aug_data, axis=0)
+        x_tr_mfcc = np.concatenate(all_aug_data, axis=0)
 
-        y_multi = x_train_mfcc.shape[0] / y_emo_train_encoded.shape[0]
-        y_emo_train_encoded = np.concatenate((y_emo_train_encoded,) * int(y_multi), axis=0)
-        y_gen_train_encoded = np.concatenate((y_gen_train_encoded,) * int(y_multi), axis=0)
-        np.save(train_x_mfcc_path.format(n_mfcc), x_train_mfcc)
-        np.save(train_y_emo_mfcc_path.format(n_mfcc), y_emo_train_encoded)
-        np.save(train_y_gen_mfcc_path.format(n_mfcc), y_gen_train_encoded)
+        y_multi = x_tr_mfcc.shape[0] / y_emo_tr.shape[0]
+        y_emo_tr = np.concatenate((y_emo_tr,) * int(y_multi), axis=0)
+        y_gen_tr = np.concatenate((y_gen_tr,) * int(y_multi), axis=0)
+        y_id_tr = np.concatenate((y_id_tr,) * int(y_multi), axis=0)
+
+        np.save(train_x_mfcc_path.format(n_mfcc), x_tr_mfcc)
+        np.save(train_y_emo_mfcc_path.format(n_mfcc), y_emo_tr)
+        np.save(train_y_gen_mfcc_path.format(n_mfcc), y_gen_tr)
+        np.save(train_y_sv_mfcc_path.format(n_mfcc), y_id_tr)
 
         print("Extracting test MFCCs from raw audio.")
-        x_test_mfcc = extract_mean_mfcc_from_raw_ndarray(X_test_np, n_mfcc)
-        np.save(test_x_mfcc_path, x_test_mfcc)
-        np.save(test_y_emo_mfcc_path, y_emo_test_encoded)
-        np.save(test_y_gen_mfcc_path, y_gen_test_encoded)
+        x_te_mfcc = extract_mean_mfcc_from_raw_ndarray(X_test_np, n_mfcc)
+        np.save(test_x_mfcc_path, x_te_mfcc)
+        np.save(test_y_emo_mfcc_path, y_emo_te)
+        np.save(test_y_gen_mfcc_path, y_gen_te)
+        np.save(test_y_sv_mfcc_path, y_id_te)
 
         print("Loading data from raw audio successful.")
 
     else:
 
-        x_train_mfcc = np.load(train_x_mfcc_path)
-        x_test_mfcc = np.load(test_x_mfcc_path)
+        x_tr_mfcc = np.load(train_x_mfcc_path)
+        x_te_mfcc = np.load(test_x_mfcc_path)
 
-        y_emo_train_encoded = np.load(train_y_emo_mfcc_path)
-        y_emo_test_encoded = np.load(test_y_emo_mfcc_path)
-        y_gen_train_encoded = np.load(train_y_gen_mfcc_path)
-        y_gen_test_encoded = np.load(test_y_gen_mfcc_path)
+        y_emo_tr = np.load(train_y_emo_mfcc_path)
+        y_emo_te = np.load(test_y_emo_mfcc_path)
+        y_gen_tr = np.load(train_y_gen_mfcc_path)
+        y_gen_te = np.load(test_y_gen_mfcc_path)
+        y_id_tr = np.load(train_y_sv_mfcc_path)
+        y_id_te = np.load(test_y_sv_mfcc_path)
 
         print("Loading augmented data successful.")
 
-    return x_train_mfcc, x_test_mfcc, y_emo_train_encoded, y_emo_test_encoded, y_gen_train_encoded, y_gen_test_encoded
+    return x_tr_mfcc, x_te_mfcc, y_emo_tr, y_emo_te, y_gen_tr, y_gen_te, y_id_tr, y_id_te
 
 
 def extract_mean_mfcc_from_raw_ndarray(X_train, n_mfcc):
@@ -110,7 +132,6 @@ def extract_mean_mfcc_from_raw_ndarray(X_train, n_mfcc):
 
     x_mfcc_train = np.ndarray((X_train.shape[0], feature_sz))
     for x_row in tqdm(X_train):
-
         extract_mfcc(x_mfcc_train, n_mfcc, x_index, x_row)
 
         x_index += 1
@@ -119,10 +140,8 @@ def extract_mean_mfcc_from_raw_ndarray(X_train, n_mfcc):
 
 
 def extract_mfcc_matrix_from_raw_ndarray(X_train, n_mfcc, matrix_size):
-
     x_mfcc_train = pd.DataFrame()
     for x_row in tqdm(X_train):
-
         mfccs1 = librosa.feature.mfcc(y=x_row, sr=22050 * 2, n_mfcc=n_mfcc)
         mfccs1 = cv2.resize(mfccs1, dsize=(matrix_size, matrix_size), interpolation=cv2.INTER_CUBIC)
         mfccs1 = mfccs1.flatten()
@@ -132,7 +151,6 @@ def extract_mfcc_matrix_from_raw_ndarray(X_train, n_mfcc, matrix_size):
 
 
 def extract_mfcc_from_raw_ndarray_aug_shift(x_data, n_mfcc, shift_array):
-
     from scipy.ndimage.interpolation import shift
     x_index = 0
 
@@ -148,7 +166,6 @@ def extract_mfcc_from_raw_ndarray_aug_shift(x_data, n_mfcc, shift_array):
     # audio_features_np_rnd_3 = np.zeros((x_data.shape[0], feature_sz))
 
     for x_row in tqdm(x_data):
-
         extract_mfcc(x_mfcc_train, n_mfcc, x_index, x_row)
 
         x_row_pos = shift(x_row, shift_array, cval=0)
@@ -171,7 +188,6 @@ def extract_mfcc_from_raw_ndarray_aug_shift(x_data, n_mfcc, shift_array):
 
 
 def extract_mfcc(x_mfcc_train, n_mfcc, x_index, x_row):
-
     non_zero_idxs = np.argwhere(x_row != 0)[:, 0]
     x_row = x_row[non_zero_idxs[0]:non_zero_idxs[-1]]
 
@@ -196,7 +212,6 @@ def extract_mfcc_matrix_from_raw_ndarray_aug_shift(X_train, n_mfcc, shift_array,
     audio_features_df_neg_shift = pd.DataFrame()
 
     for x_row in tqdm(X_train):
-
         mfccs1 = librosa.feature.mfcc(y=x_row, sr=22050 * 2, n_mfcc=n_mfcc)
         mfccs1 = cv2.resize(mfccs1, dsize=(matrix_size, matrix_size), interpolation=cv2.INTER_CUBIC)
         mfccs1 = mfccs1.flatten()
@@ -225,12 +240,12 @@ def extract_mel_matrix_from_raw_ndarray_aug_shift(x_data, shift_positions, n_mel
     x_index = 0
     sample_rate = 22050 * 2
 
-    audio_features_np = np.zeros((x_data.shape[0], n_mels*n_mels))
-    audio_features_np_pos_shift = np.zeros((x_data.shape[0], n_mels*n_mels))
-    audio_features_np_neg_shift = np.zeros((x_data.shape[0], n_mels*n_mels))
-    audio_features_np_rnd_1 = np.zeros((x_data.shape[0], n_mels*n_mels))
-    audio_features_np_rnd_2 = np.zeros((x_data.shape[0], n_mels*n_mels))
-    audio_features_np_rnd_3 = np.zeros((x_data.shape[0], n_mels*n_mels))
+    audio_features_np = np.zeros((x_data.shape[0], n_mels * n_mels))
+    audio_features_np_pos_shift = np.zeros((x_data.shape[0], n_mels * n_mels))
+    audio_features_np_neg_shift = np.zeros((x_data.shape[0], n_mels * n_mels))
+    audio_features_np_rnd_1 = np.zeros((x_data.shape[0], n_mels * n_mels))
+    audio_features_np_rnd_2 = np.zeros((x_data.shape[0], n_mels * n_mels))
+    audio_features_np_rnd_3 = np.zeros((x_data.shape[0], n_mels * n_mels))
 
     output_list = []
     output_list.append(audio_features_np)
@@ -241,7 +256,6 @@ def extract_mel_matrix_from_raw_ndarray_aug_shift(x_data, shift_positions, n_mel
     output_list.append(audio_features_np_rnd_3)
 
     for x_row in tqdm(x_data):
-
         extract_mel_to_nd_array(audio_features_np, n_fft, n_mels, sample_rate, x_index, x_row)
 
         x_row_pos = shift(x_row, shift_positions, cval=0)
@@ -268,7 +282,6 @@ def extract_mel_matrix_from_raw_ndarray_aug_shift(x_data, shift_positions, n_mel
 
 
 def add_random_noise(increment_percent, x_row):
-
     rnd_direction = np.random.randint(0, 2, size=x_row.shape[0])
     rnd_direction[rnd_direction == 0] = -1
     x_row_rnd_noise = x_row * increment_percent * rnd_direction
@@ -277,7 +290,6 @@ def add_random_noise(increment_percent, x_row):
 
 
 def extract_mel_to_nd_array(audio_features_np, n_fft, n_mels, sample_rate, x_index, x_row):
-
     mel1 = librosa.feature.melspectrogram(y=x_row, sr=sample_rate, n_fft=n_fft, n_mels=n_mels)
     non_zero_idxs = np.argwhere(np.mean(mel1, axis=0) != 0)[:, 0]
     mel1 = mel1[:, non_zero_idxs[0]:non_zero_idxs[-1]]
@@ -288,7 +300,6 @@ def extract_mel_to_nd_array(audio_features_np, n_fft, n_mels, sample_rate, x_ind
 
 
 def pre_process_fseer_data(audio_files_path, n_mfcc=40, get_emotion_label=True, augment_data=False):
-
     audio_files = glob.glob("{}/**/*.wav".format(audio_files_path), recursive=True)
 
     lst = []
@@ -382,16 +393,19 @@ def to_batchdataset(x_train_input, x_test_input, batch_size):
     import tensorflow as tf
 
     mdl_train_dataset = tf.data.Dataset.from_tensor_slices(x_train_input)
-    mdl_test_dataset = tf.data.Dataset.from_tensor_slices(x_test_input)
 
-    tr_batchdt = mdl_train_dataset.batch(batch_size)
-    te_batchdt = mdl_test_dataset.batch(batch_size)
+    if x_test_input is not None:
+        mdl_test_dataset = tf.data.Dataset.from_tensor_slices(x_test_input)
+        te_batchdt = mdl_test_dataset.padded_batch(batch_size)
+    else:
+        te_batchdt = None
+
+    tr_batchdt = mdl_train_dataset.padded_batch(batch_size, drop_remainder=True)
 
     return tr_batchdt, te_batchdt
 
 
 def pre_process_audio_to_mel_data(audio_files_path, n_mels=128, get_emotion_label=True, augment_data=False):
-
     audio_files = glob.glob("{}/**/*.wav".format(audio_files_path), recursive=True)
 
     lst = []
@@ -487,7 +501,6 @@ def pre_process_audio_to_mel_data(audio_files_path, n_mels=128, get_emotion_labe
 
 
 def extract_raw_audio(audio_files):
-
     audio_raw_df = pd.DataFrame()
     audio_labels_df = pd.DataFrame()
     start_time = time.time()
@@ -498,21 +511,22 @@ def extract_raw_audio(audio_files):
 
         emo_label = parse_fname_to_only_emo_label(file_name)
         gen_label = parse_fname_to_gender_label(file_name)
+        id_label = parse_fname_to_id_label(file_name)
 
         if emo_label is None or emo_label == '':
             continue
 
         audio_bin, sample_rate = librosa.load(full_fname, res_type='kaiser_fast')
 
-        audio_labels_list.append([emo_label, gen_label])
+        audio_labels_list.append([emo_label, gen_label, id_label])
         audio_raw_list.append(audio_bin)
 
     # audio_labels_df = audio_labels_df.append(Series([emo_label, gen_label]), ignore_index=True)
     # audio_raw_df = audio_raw_df.append(Series(audio_bin), ignore_index=True)
     # TODO maybe just using numpy array of arrays is faster
     print('Converting list to dataframes. This can take a while.')
-    audio_raw_df = pd.DataFrame(audio_raw_list,)
-    audio_labels_df = pd.DataFrame(audio_labels_list,)
+    audio_raw_df = pd.DataFrame(audio_raw_list, )
+    audio_labels_df = pd.DataFrame(audio_labels_list, )
 
     print("Time to extract Mel features:  %s seconds." % (time.time() - start_time))
     full_raw_audio_data_df = pd.concat([audio_raw_df, audio_labels_df], ignore_index=True, axis=1)
@@ -591,7 +605,8 @@ def extract_2d_mel_features(audio_files):
             continue
 
         if len(file_name) >= 13:
-            audio_bin, sample_rate = librosa.load(full_fname, duration=3, sr=22050 * 2, res_type='kaiser_fast', offset=1.1)
+            audio_bin, sample_rate = librosa.load(full_fname, duration=3, sr=22050 * 2, res_type='kaiser_fast',
+                                                  offset=1.1)
         else:
             audio_bin, sample_rate = librosa.load(full_fname, duration=3, sr=22050 * 2, res_type='kaiser_fast')
 
@@ -602,14 +617,14 @@ def extract_2d_mel_features(audio_files):
 
         mfccs = cv2.resize(mfccs, dsize=(64, 64), interpolation=cv2.INTER_CUBIC)
 
-        #mfccs = librosa.feature.mfcc(y=audio_bin, sr=sample_rate, n_mfcc=64, dct_type=1)
-        #mfccs_mean = np.mean(mfccs, axis=0)
+        # mfccs = librosa.feature.mfcc(y=audio_bin, sr=sample_rate, n_mfcc=64, dct_type=1)
+        # mfccs_mean = np.mean(mfccs, axis=0)
 
         if mfccs.shape[1] > mfcc_size:
             mfcc_size = mfccs.shape[1]
             print(mfcc_size)
 
-        #mfccs = librosa.power_to_db(mfccs, ref=100)
+        # mfccs = librosa.power_to_db(mfccs, ref=100)
         mfccs = mfccs.flatten()
         audio_labels_df = audio_labels_df.append(Series([emo_label, gen_label]), ignore_index=True)
         audio_features_df = audio_features_df.append(Series(mfccs), ignore_index=True)
@@ -620,7 +635,6 @@ def extract_2d_mel_features(audio_files):
 
 
 def parse_fname_to_emo_label(file_name):
-
     label = ""
     if file_name[6:-16] == '01' and int(file_name[18:-4]) % 2 == 1:
         label = 'male_neutral'
@@ -671,7 +685,6 @@ def parse_fname_to_emo_label(file_name):
 
 
 def parse_fname_to_only_emo_label(file_name):
-
     label = None
     if len(file_name) >= 20:
         # RAVDESS file names
@@ -692,7 +705,7 @@ def parse_fname_to_only_emo_label(file_name):
         elif file_name[7:8] == '8':
             label = 'surprised'
 
-    #EMOVO file names
+    # EMOVO file names
     elif file_name[:3] == 'dis':
         label = 'disgust'
     elif file_name[:3] == 'gio':
@@ -708,7 +721,7 @@ def parse_fname_to_only_emo_label(file_name):
     elif file_name[:3] == 'tri':
         label = 'sad'
 
-    #SAVEE file names
+    # SAVEE file names
     elif file_name[:1] == 'a':
         label = 'angry'
     elif file_name[:1] == 'f':
@@ -724,7 +737,7 @@ def parse_fname_to_only_emo_label(file_name):
     elif file_name[:2] == 'su':
         label = 'surprised'
 
-    #EMODB
+    # EMODB
     elif file_name[5] == 'W':
         label = 'angry'
     # Unique to emodb.
@@ -748,7 +761,6 @@ def parse_fname_to_only_emo_label(file_name):
 
 
 def parse_fname_to_gender_label(file_name):
-
     f_name_len = len(file_name)
     label = None
     # Emodb parse
@@ -796,3 +808,27 @@ def parse_fname_to_gender_label(file_name):
 
     return label
 
+
+def parse_fname_to_id_label(file_name):
+    f_name_len = len(file_name)
+    label = None
+    # Emodb parse
+    if f_name_len == 11:
+        pass
+
+    # Emovo parse
+    elif f_name_len == 13:
+        pass
+
+    # Savee all male
+    elif f_name_len <= 8:
+        pass
+
+    # Ravdess
+    elif f_name_len == 24:
+        label = file_name[18:-4]
+
+    if label is None:
+        raise Exception('No gender set')
+
+    return label

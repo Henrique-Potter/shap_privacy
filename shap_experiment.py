@@ -1,18 +1,20 @@
-import pandas as pd
-import shap
-import numpy as np
-import tensorflow as tf
 from pathlib import Path
 
+import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
+import shap
+import tensorflow as tf
 from blume.table import table
 from scipy.cluster.vq import whiten
-from tqdm import tqdm
 from tensorflow.keras.models import load_model
-import matplotlib.pyplot as plt
+from tqdm import tqdm
+
 from data_processing import pre_process_data
 from experiment_config import set_experiment_config
 from obfuscation_functions import general_by_class_mask
 from util.custom_functions import replace_outliers_by_std, replace_outliers_by_quartile, mean_std_analysis
+
 print("Num GPUs Available: ", len(tf.config.list_physical_devices('GPU')))
 
 
@@ -25,8 +27,10 @@ def main():
     emo_shap_df_path = './data/emo_shap_df.npy'
 
     print("Pre-processing audio files!")
-    x_train_emo_cnn, y_train_emo_encoded, x_test_emo_cnn, y_test_emo_encoded = pre_process_data(audio_files_path, get_emotion_label=True)
-    x_train_gen_cnn, y_train_gen_encoded, x_test_gen_cnn, y_test_gen_encoded = pre_process_data(audio_files_path, get_emotion_label=False)
+    x_train_emo_cnn, y_train_emo_encoded, x_test_emo_cnn, y_test_emo_encoded = pre_process_data(audio_files_path,
+                                                                                                get_emotion_label=True)
+    x_train_gen_cnn, y_train_gen_encoded, x_test_gen_cnn, y_test_gen_encoded = pre_process_data(audio_files_path,
+                                                                                                get_emotion_label=False)
     print("Pre-processing audio files Complete!")
 
     # Sanity check. These summations should be 0.
@@ -45,7 +49,8 @@ def main():
     print("Loading shap values")
 
     # When using ranked outputs, the shapeley values are also sorted by rank (e.g., index 0 always has the shapeley of the model prediction)
-    gen_shap_values = extract_shap_values(gen_shap_df_path, gender_model, x_test_emo_cnn, x_train_emo_cnn, gender_nr_classes)
+    gen_shap_values = extract_shap_values(gen_shap_df_path, gender_model, x_test_emo_cnn, x_train_emo_cnn,
+                                          gender_nr_classes)
     emo_shap_values = extract_shap_values(emo_shap_df_path, emo_model, x_test_emo_cnn, x_train_emo_cnn, emo_nr_classes)
 
     # Isolating shap values by class.
@@ -116,6 +121,7 @@ def extract_shap_values(shap_df_path, model, x_target_data, x_background_data, n
         np.save(shap_df_path, shap_vals, allow_pickle=True)
     else:
         shap_vals = np.load(shap_df_path, allow_pickle=True)
+
     return shap_vals
 
 
@@ -150,7 +156,6 @@ def evaluate_obfuscation_function(model_list, obf_f_list, x_model_input):
             metrics_perf_list = []
 
             for obf_intensity in tqdm(obf_f_str_list):
-
                 overall_perf, by_class_perf = obfuscate_and_evaluate(model_dict,
                                                                      obf_f_dict,
                                                                      obf_intensity,
@@ -182,7 +187,6 @@ def obfuscate_and_evaluate(model_dict,
                            priv_target_mdl,
                            util_target_mdl,
                            x_model_input):
-
     model = model_dict['model']
     curr_y_labels = model_dict['ground_truth']
     curr_model_name = model_dict['model_name']
@@ -199,7 +203,6 @@ def obfuscate_and_evaluate(model_dict,
     util_shap_data = util_target_mdl['shap_values']
 
     for i in range(avg_reps):
-
         # local_priv_shap_data = copy_numpy_matrix_list(priv_shap_data)
         # local_util_shap_data = copy_numpy_matrix_list(util_shap_data)
 
@@ -236,7 +239,6 @@ def obfuscate_and_evaluate(model_dict,
 
 
 def avg_by_class_perf(per_class_model_perf_list, perf_reps_nr):
-
     nr_classes = len(per_class_model_perf_list[0])
     final_by_class_perf = []
     for class_index in range(nr_classes):
@@ -300,8 +302,7 @@ def evaluate_model(model_list, x_test):
 
 
 def general_mask_evaluation(model_list, x_test):
-
-    modulation_levels = [x/10 for x in range(7, 13, 1)]
+    modulation_levels = [x / 10 for x in range(7, 13, 1)]
 
     p_model_id = 0
     p_class_id = 5
@@ -355,9 +356,10 @@ def general_mask_evaluation(model_list, x_test):
 
     plt.plot(x_list, eacc, label='Emo model ACC')
     plt.plot(x_list, gacc, label='Gen model ACC')
-    tlt = "(Overall View) General mask for private model {} with class {}. The Top {}: {} Masked: {}\n".format(p_model_id, p_class_id, priv_topk_size, origi_pmask,priv_feature_mask)
+    tlt = "(Overall View) General mask for private model {} with class {}. The Top {}: {} Masked: {}\n".format(
+        p_model_id, p_class_id, priv_topk_size, origi_pmask, priv_feature_mask)
     tlt2 = "Utility top {} are {}. Priv-Util Match {}".format(util_topk_size, util_feature_mask, features_removed)
-    plt.title(tlt+tlt2)
+    plt.title(tlt + tlt2)
     plt.ylabel('ACC')
     plt.xlabel('Modulation multiplier')
     plt.legend()
@@ -389,9 +391,11 @@ def general_mask_evaluation(model_list, x_test):
                 lbl = '{} ACC'.format('Model {} class {}'.format(model_idx, class_data_idx))
                 plt.plot(x_list, class_perf_list[class_data_idx], label=lbl)
 
-    tlt3 = "(By class View) General mask for private model {} with class {}. The Top {}: {} Masked: {}\n".format(p_model_id, p_class_id, priv_topk_size, origi_pmask, priv_feature_mask)
-    tlt4 = "Utility model {} class {}. Top {}: {}. Priv-Util Match: {}".format(u_model_id, u_class_id, util_topk_size, util_feature_mask, features_removed)
-    ax1.set_title(tlt3+tlt4)
+    tlt3 = "(By class View) General mask for private model {} with class {}. The Top {}: {} Masked: {}\n".format(
+        p_model_id, p_class_id, priv_topk_size, origi_pmask, priv_feature_mask)
+    tlt4 = "Utility model {} class {}. Top {}: {}. Priv-Util Match: {}".format(u_model_id, u_class_id, util_topk_size,
+                                                                               util_feature_mask, features_removed)
+    ax1.set_title(tlt3 + tlt4)
     ax1.set_ylabel('ACC')
     ax1.set_xlabel('Modulation multiplier')
     ax1.set_xticks(x_list, modulation_levels)
@@ -457,7 +461,8 @@ def plot_obs_f_performance(perf_list):
                 elif metric_name == "by_class":
                     # Parsing by class data
                     parsed_perf_by_class = parse_per_class_perf_data(metric_data)
-                    plot_obs_f_performance_by_class(model_name, obf_f_name, obf_f_index, parsed_perf_by_class, priv_class, util_class)
+                    plot_obs_f_performance_by_class(model_name, obf_f_name, obf_f_index, parsed_perf_by_class,
+                                                    priv_class, util_class)
             obf_f_index += 1
 
     fig, ax = plt.subplots()
@@ -549,7 +554,7 @@ def plot_obs_f_performance_by_class(model_name, obf_f_name, obf_f_index, parsed_
     tab.set_fontsize(10)
     #
     # fig.tight_layout()
-    plt.title('{} Accuracy Overview for {}'.format(model_name,obf_f_name))
+    plt.title('{} Accuracy Overview for {}'.format(model_name, obf_f_name))
     plt.show()
     plt.clf()
 
@@ -565,7 +570,6 @@ def get_data_samples(perf_data):
 
 
 def evaluate_by_class(model, obfuscated_x, y_model_input, by_class_perf):
-
     nr_classes = y_model_input.shape[1]
 
     for cls_index in range(nr_classes):
@@ -596,7 +600,6 @@ def simple_bar_plot(obfuscated_x, class_id):
 
 
 def parse_shap_values_by_class(shap_data, y_data):
-
     shap_values = shap_data[0]
     shap_predictions = shap_data[1]
 
@@ -605,7 +608,7 @@ def parse_shap_values_by_class(shap_data, y_data):
     correct_shap_map = shap_predictions == y_data_int
     misses = np.sum(shap_predictions != y_data_int)
 
-    #This will be equal to the number of classes
+    # This will be equal to the number of classes
     gt_shap_list = [[] for x in range(len(shap_values))]
     correct_shap_list = [[] for x in range(len(shap_values))]
 
@@ -632,7 +635,6 @@ def parse_shap_values_by_class(shap_data, y_data):
 
 
 def clean_outliers(gt_shap_list):
-
     cleared_class_matrix_list = []
     for class_data in gt_shap_list:
         class_data_matrix = np.vstack(class_data)
@@ -645,7 +647,6 @@ def clean_outliers(gt_shap_list):
 def add_noise(m_shap_sum, x_gen_train, y_gen_train, noise_str):
     male_only_x = None
     male_only_y = None
-    import random as rd
     for sample_index in range(x_gen_train.shape[0]):
         true_label_index = np.where(y_gen_train[sample_index] == 1)[0][0]
 
@@ -662,11 +663,10 @@ def add_noise(m_shap_sum, x_gen_train, y_gen_train, noise_str):
 
 
 def analyse_shap_values(m_shap_list):
-
     shap_np = np.array(m_shap_list)
     shap_np = replace_outliers_by_std(shap_np, 3)
     shap_np = whiten(shap_np)
-    #shap_np_scaled = normalizeData_0_1(shap_np)
+    # shap_np_scaled = normalizeData_0_1(shap_np)
     shap_np_scaled = shap_np
 
     shap_nr_samples = shap_np.shape[0]
@@ -678,17 +678,17 @@ def analyse_shap_values(m_shap_list):
 
     shap_sorted_indexes = np.argsort(shap_samples_sum)
     shap_samples_sum_sorted = shap_samples_sum[shap_sorted_indexes]
-    shap_sorted_scaled_avg = shap_samples_sum_sorted/shap_nr_samples
+    shap_sorted_scaled_avg = shap_samples_sum_sorted / shap_nr_samples
     shap_np_scaled_sorted = shap_np_scaled[:, shap_sorted_indexes]
 
-    for index in range(int(shap_nr_samples/10)):
+    for index in range(int(shap_nr_samples / 10)):
         plt.plot(x_list, shap_np_scaled_sorted[index, :], c='b', alpha=0.2)
     plt.plot(x_list, shap_sorted_scaled_avg, c='r')
     # plt.xticks(x_list, shap_sorted_indexes)
 
-    #plt.yscale('log')
-    #plt.yticks((np.arange(-0.1, 0.1, step=0.001)))
-    #plt.ylim((-0.1, 0.1))
+    # plt.yscale('log')
+    # plt.yticks((np.arange(-0.1, 0.1, step=0.001)))
+    # plt.ylim((-0.1, 0.1))
     plt.show()
 
     plt.bar(x_list, shap_samples_sum_sorted)
@@ -698,11 +698,10 @@ def analyse_shap_values(m_shap_list):
 
 
 def analyse_timeseries_kmeans(m_shap_list):
-
     shap_np = np.array(m_shap_list)
-    #shap_np = replace_outliers_by_std(shap_np, 2)
-    #shap_np = whiten(shap_np)
-    #shap_np_scaled = NormalizeData_0_1(shap_np)
+    # shap_np = replace_outliers_by_std(shap_np, 2)
+    # shap_np = whiten(shap_np)
+    # shap_np_scaled = NormalizeData_0_1(shap_np)
     shap_np_scaled = shap_np
 
     shap_samples_sum = np.sum(shap_np_scaled, axis=0)
@@ -774,7 +773,10 @@ def extract_shap(model, shap_input, background_data, background_size, nr_classes
 
     background = background_data[:background_size]
     e = shap.DeepExplainer(model, background)
-    shap_values = e.shap_values(shap_input, ranked_outputs=nr_classes, output_rank_order=rank_order, check_additivity=False)
+    shap_values = e.shap_values(shap_input, ranked_outputs=nr_classes, output_rank_order=rank_order,
+                                check_additivity=False)
+    # shap_values_raw = e.shap_values(shap_input, check_additivity=False)
+
     return shap_values, e
 
 

@@ -1,14 +1,15 @@
 import matplotlib.pyplot as plt
 import numpy as np
+import tensorflow as tf
 
 from TrainingPlot import PlotLosses
 from util.PerClassMetrics import PerClassMetrics
-import tensorflow as tf
 
 
-def train_model(model, model_path, batch, epoch, x_traincnn, y_train, x_testcnn, y_test, get_emotion_label):
-    cl_backs = [PlotLosses(model_path, get_emotion_label), PerClassMetrics(model, (x_testcnn, y_test), 64, int(get_emotion_label))]
-    cnnhistory = model.fit(x_traincnn, y_train, batch_size=batch, epochs=epoch, validation_data=(x_testcnn, y_test), callbacks=cl_backs)
+def train_model(model, model_path, batch, epoch, x_traincnn, y_train, x_testcnn, y_test, model_id):
+    cl_backs = [PlotLosses(model_path, model_id), PerClassMetrics(model, (x_testcnn, y_test), 64, int(model_id))]
+    cnnhistory = model.fit(x_traincnn, y_train, batch_size=batch, epochs=epoch, validation_data=(x_testcnn, y_test),
+                           callbacks=cl_backs)
     # Save the weights
     model.save(model_path)
     figure, axis = plt.subplots(2)
@@ -29,45 +30,55 @@ def train_model(model, model_path, batch, epoch, x_traincnn, y_train, x_testcnn,
 
 
 @tf.function
-def train_step(model, priv_mdl, util_mdl, x_input, masked_x_input, y_util, y_priv, util_loss_fn, priv_loss_fn, lambd):
+def train_step(model, feature_map, priv_emo_model, priv_gen_model, util_mdl, x_input, masked_x_input, y_util, y_e_priv, y_g_priv,
+               util_loss_fn, priv_e_loss_fn, priv_g_loss_fn, lambd):
 
     with tf.GradientTape() as tape:
 
-        # cls_targets = tf.constant([2, 3])
-        # cls_size = cls_targets.shape[0]
-        #
-        # batch_sz = x_input.shape[0]
-        # feature_sz = x_input.shape[1]
-        # nr_priv_classes = y_priv.shape[1]
         model_mask = model(masked_x_input, training=True)
-
-        # paddings = tf.constant([[0, 0], [0, 40 - model_mask.shape[1]]])
-        # final_mask = tf.pad(model_mask, paddings)
-
-        # Applying the mask to the input
-        obfuscated_input = model_mask + x_input
-
-        # Calculating loss
-        priv_mdl_logits = priv_mdl(obfuscated_input, training=False)
-        # priv_mdl_true_loss = priv_mdl_loss_fn(tf.cast(y_priv_mdl, tf.float64), tf.cast(priv_mdl_logits, tf.float64))
-
-        # y_priv should already be masked by class
-        ploss = priv_loss_fn(y_priv, priv_mdl_logits)
-
-        util_mdl_logits = util_mdl(obfuscated_input, training=False)
-        uloss = util_loss_fn(y_util, util_mdl_logits)
-
         tape.watch(model_mask)
 
-        tloss = lambd * uloss + (1-lambd) * ploss
+        output_list = []
+        feature_index = 0
+        for index in range(x_input.shape[1]):
+            tensor_cl = x_input[:, index]
+            equal = tf.math.equal(index, feature_map)
+            contains = tf.reduce_any(equal)
+            if contains:
+                tensor_cl = tensor_cl + model_mask[:, feature_index]
+                feature_index += 1
+
+            output_list.append(tensor_cl)
+        obfuscated_input = tf.stack(output_list, axis=1)
+        # Applying the mask to the input
+        # obfuscated_input = model_mask + x_input
+        # obfuscated_input = model_mask
+
+        # Calculating emotion loss
+        epriv_mdl_logits = priv_emo_model(obfuscated_input, training=False)
+        # priv_mdl_true_loss = priv_mdl_loss_fn(tf.cast(y_priv_mdl, tf.float64), tf.cast(priv_mdl_logits, tf.float64))
+        # y_priv should already be masked by class
+        # peloss = (1-lambd)/6 * 5 * priv_e_loss_fn(y_e_priv, priv_mdl_logits)
+        peloss = 2 * priv_e_loss_fn(y_e_priv, epriv_mdl_logits)
+
+        # Calculating gen loss
+        gpriv_mdl_logits = priv_gen_model(obfuscated_input, training=False)
+        # pgloss = (1-lambd)/6 * priv_g_loss_fn(y_g_priv, priv_mdl_logits)
+        pgloss = 1 * priv_g_loss_fn(y_g_priv, gpriv_mdl_logits)
+
+        util_mdl_logits = util_mdl(obfuscated_input, training=False)
+        # uloss = -1*tf.math.pow(0.25, util_loss_fn(y_util, util_mdl_logits))+1
+        # uloss = lambd * util_loss_fn(y_util, util_mdl_logits)
+        uloss = 12 * util_loss_fn(y_util, util_mdl_logits)
+
+        tloss = peloss + pgloss + uloss
 
     gradients = tape.gradient(tloss, model.trainable_variables)
 
-    return tloss, ploss, uloss, gradients, priv_mdl_logits
+    return tloss, peloss, pgloss, uloss, gradients, epriv_mdl_logits
 
 
 def estimate_logits_from_loss(batch_size, nr_priv_classes, priv_mdl_loss_fn, priv_mdl_true_loss, wrong_y):
-
     cross_entropy = tf.divide(priv_mdl_true_loss, batch_size)
     highest_logit_value = tf.pow(2, -tf.cast(cross_entropy, tf.float64))
     left_over = 1 - highest_logit_value
