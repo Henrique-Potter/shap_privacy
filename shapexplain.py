@@ -126,8 +126,8 @@ def train_obfuscator_top_k_features(shap_data_dict, topk_size, x_train, x_test, 
     # Guarantees some location information since its sorted and diff will only remove
     features = [x for x in range(40)]
     priv_features = np.union1d(priv1_feature_mask, priv2_feature_mask)
-    priv_util_features = np.union1d(priv_features, util_shap_idxs[:-topk_size])
-    model_features = np.setdiff1d(features, priv_util_features)
+    # priv_util_features = np.union1d(priv_features, util_shap_idxs[:-topk_size])
+    model_features = np.setdiff1d(features, priv_features)
 
     model_features.flags.writeable = False
     features_map_hash = hash(model_features.data.tobytes())
@@ -172,6 +172,7 @@ def train_obfuscator_top_k_features(shap_data_dict, topk_size, x_train, x_test, 
 
 def train_obfuscation_model(obf_model, model_features, x_train_input, x_test_input, masked_input, util_sv_labels, priv_e_labels,
                             priv_g_labels, optimizer, lambd):
+
     nr_e_classes = priv_e_labels[0][0].shape[0]
     nr_g_classes = priv_g_labels[0][0].shape[0]
     nr_sv_classes = util_sv_labels[0][0].shape[0]
@@ -401,14 +402,14 @@ if __name__ == "__main__":
     priv_classes = []
     top_k_sizes = [-x for x in range(0, 40, 1)]
     current_top_k = 0
-    top_k_sizes = [-10, -20]
+    top_k_sizes = [-30, -35]
 
     batch_size = 32
-    epochs = 300
+    epochs = 301
     sample_results_rate = 10
 
     # metrics
-    plot_epoch_rate = 50
+    plot_epoch_rate = 300
 
     feature_map_hash = {}
 

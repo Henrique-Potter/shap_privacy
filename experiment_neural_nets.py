@@ -437,6 +437,7 @@ def get_obfuscation_model_tanh2(input_shape):
 
 
 def get_obfuscation_model_swish(input_shape):
+
     model = Sequential()
     model.add(Dense(128, input_shape=(input_shape,), ))
     model.add(Activation('swish'))
