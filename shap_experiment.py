@@ -112,7 +112,10 @@ def export_shap_to_csv(gen_ground_truth_list, model_name):
         class_id += 1
 
 
-def extract_shap_values(shap_df_path, model, x_target_data, x_background_data, nr_classes):
+def extract_shap_values(shap_df_path, model, x_target_data, x_background_data, y_tr):
+
+    nr_classes = len(y_tr[0])
+
     # Extracting SHAP values
     if not Path(shap_df_path).exists():
         print("Calculating Shap values")

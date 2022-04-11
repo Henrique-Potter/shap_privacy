@@ -1,4 +1,3 @@
-import time
 from pathlib import Path
 
 import numpy as np
@@ -28,15 +27,11 @@ def main():
     x_train_scaled = sc.fit_transform(x_train).astype(np.float32)
     x_test_scaled = sc.transform(x_test).astype(np.float32)
 
-    gender_nr_classes = len(y_tr_gen[0])
-    emo_nr_classes = len(y_tr_emo[0])
-    sv_nr_classes = len(y_tr_sv[0])
-
     print("Loading shap values")
     # When using ranked outputs, the shapeley values are also sorted by rank (e.g., index 0 always has the shapeley of the model prediction)
-    gen_shap_values = extract_shap_values(gen_shap_df_path, priv_gen_model, x_test_scaled, x_train_scaled, gender_nr_classes)
-    emo_shap_values = extract_shap_values(emo_shap_df_path, priv_emo_model, x_test_scaled, x_train_scaled, emo_nr_classes)
-    sv_shap_values = extract_shap_values(sv_shap_df_path, util_sv_model, x_test_scaled, x_train_scaled, sv_nr_classes)
+    gen_shap_values = extract_shap_values(gen_shap_df_path, priv_gen_model, x_test_scaled, x_train_scaled, y_tr_gen)
+    emo_shap_values = extract_shap_values(emo_shap_df_path, priv_emo_model, x_test_scaled, x_train_scaled, y_tr_emo)
+    sv_shap_values = extract_shap_values(sv_shap_df_path, util_sv_model, x_test_scaled, x_train_scaled, y_tr_sv)
 
     # Isolating shap values by class.
     gen_gt_shap_list, gen_corr_shap_list = parse_shap_values_by_class(gen_shap_values, y_te_gen)
@@ -45,13 +40,11 @@ def main():
 
     # model_name = 'gender_model_cr'
     # export_shap_to_csv(gen_corr_shap_list, model_name)
-    #
     # model_name = 'emo_model_cr'
     # export_shap_to_csv(emo_corr_shap_list, model_name)
 
     # mean_std_analysis(gen_corr_shap_list)
     # mean_std_analysis(emo_corr_shap_list)
-    #
     # pclass_shap_list0 = gen_gt_shap_list[0]
     # pclass_shap_list1 = gen_gt_shap_list[1]
 
@@ -66,45 +59,44 @@ def main():
     priv_e_labels = (y_tr_emo, y_te_emo)
     util_labels = (y_tr_sv, y_te_sv)
 
-    for lambd in lambds:
+    lambd = 0
+    # ------------ Util/Priv performance paths ----------------
+    util_sv_perf_path = './data/nn_obfuscator_perf/sv_privacy/util_sv_data_cls{}_l{}_{}fts_e{}_util5.npy'
+    priv_emo_perf_path = './data/nn_obfuscator_perf/sv_privacy/priv_emo_data_cls{}_l{}_{}fts_e{}_util5.npy'
+    priv_gen_perf_path = './data/nn_obfuscator_perf/sv_privacy/priv_gen_data_cls{}_l{}_{}fts_e{}_util5.npy'
 
-        # ------------ Util/Priv performance paths ----------------
-        util_sv_perf_path = './data/nn_obfuscator_perf/sv_privacy/util_sv_data_cls{}_l{}_{}fts_e{}_util5.npy'
-        priv_emo_perf_path = './data/nn_obfuscator_perf/sv_privacy/priv_emo_data_cls{}_l{}_{}fts_e{}_util5.npy'
-        priv_gen_perf_path = './data/nn_obfuscator_perf/sv_privacy/priv_gen_data_cls{}_l{}_{}fts_e{}_util5.npy'
+    for index, top_k_size in enumerate(top_k_sizes):
+        global current_top_k
+        current_top_k = top_k_size
 
-        for index, top_k_size in enumerate(top_k_sizes):
-            global current_top_k
-            current_top_k = top_k_size
+        util_perf_path_full = set_file_name(lambd, top_k_size, util_sv_perf_path)
+        priv_emo_perf_path_full = set_file_name(lambd, top_k_size, priv_emo_perf_path)
+        priv_gen_perf_path_full = set_file_name(lambd, top_k_size, priv_gen_perf_path)
 
-            util_perf_path_full = set_file_name(lambd, top_k_size, util_sv_perf_path)
-            priv_emo_perf_path_full = set_file_name(lambd, top_k_size, priv_emo_perf_path)
-            priv_gen_perf_path_full = set_file_name(lambd, top_k_size, priv_gen_perf_path)
+        if not Path(util_perf_path_full).exists() or not Path(priv_emo_perf_path_full).exists():
+            # ------------ Util/Priv Definitions ----------------
+            util_sv_perf_list, priv_e_perf_list, priv_g_perf_list = train_obfuscator_top_k_features(shap_data_dict,
+                                                                                                    top_k_size,
+                                                                                                    x_train_scaled,
+                                                                                                    x_test_scaled,
+                                                                                                    util_labels,
+                                                                                                    priv_e_labels,
+                                                                                                    priv_g_labels,
+                                                                                                    lambd)
 
-            if not Path(util_perf_path_full).exists() or not Path(priv_emo_perf_path_full).exists():
-                # ------------ Util/Priv Definitions ----------------
-                util_sv_perf_list, priv_e_perf_list, priv_g_perf_list = train_obfuscator_top_k_features(shap_data_dict,
-                                                                                                        top_k_size,
-                                                                                                        x_train_scaled,
-                                                                                                        x_test_scaled,
-                                                                                                        util_labels,
-                                                                                                        priv_e_labels,
-                                                                                                        priv_g_labels,
-                                                                                                        lambd)
+            if len(util_sv_perf_list) == 0:
+                print("All features have been removed, stopping the experiment.")
+                return
+            elif util_sv_perf_list[0] == 9999:
+                print("Private features already evaluated k={} skipping to k={}.".format(top_k_size,
+                                                                                         top_k_sizes[index + 1]))
+                continue
 
-                if len(util_sv_perf_list) == 0:
-                    print("All features have been removed, stopping the experiment.")
-                    return
-                elif util_sv_perf_list[0] == 999:
-                    print("Private features already evaluated k={} skipping to k={}.".format(top_k_size,
-                                                                                             top_k_sizes[index + 1]))
-                    continue
-
-                np.save(util_perf_path_full, util_sv_perf_list, )
-                np.save(priv_emo_perf_path_full, priv_e_perf_list, )
-                np.save(priv_gen_perf_path_full, priv_g_perf_list, )
-            else:
-                print("Experiments with this configuration have been performed.")
+            np.save(util_perf_path_full, util_sv_perf_list, )
+            np.save(priv_emo_perf_path_full, priv_e_perf_list, )
+            np.save(priv_gen_perf_path_full, priv_g_perf_list, )
+        else:
+            print("Experiments with this configuration have been performed.")
 
 
 def train_obfuscator_top_k_features(shap_data_dict, topk_size, x_train, x_test, util_labels, priv_e_labels,
@@ -116,17 +108,19 @@ def train_obfuscator_top_k_features(shap_data_dict, topk_size, x_train, x_test, 
     if topk_size > 0:
         priv1_feature_mask = gen_shap_idxs[-topk_size:]
         priv2_feature_mask = emo_shap_idxs[-topk_size:]
+        util_feature_mask = util_shap_idxs[-topk_size:]
     elif topk_size < 0:
         priv1_feature_mask = gen_shap_idxs[:-topk_size]
         priv2_feature_mask = emo_shap_idxs[:-topk_size]
+        util_feature_mask = util_shap_idxs[:-topk_size]
     else:
         priv1_feature_mask = []
         priv2_feature_mask = []
 
-    # Guarantees some location information since its sorted and diff will only remove
+    # Selecting top k features.
     features = [x for x in range(40)]
     priv_features = np.union1d(priv1_feature_mask, priv2_feature_mask)
-    priv_util_features = np.union1d(priv_features, util_shap_idxs[:-topk_size])
+    priv_util_features = np.union1d(priv_features, util_feature_mask)
     model_features = np.setdiff1d(features, priv_util_features)
 
     model_features.flags.writeable = False
@@ -134,14 +128,19 @@ def train_obfuscator_top_k_features(shap_data_dict, topk_size, x_train, x_test, 
     # Addressing when all features are removed or its a repeated combination
     # Using empty lists or lists with 999 different error types. TODO add proper exception handling.
     if len(model_features) == 0:
-        return model_features, model_features, model_features
+        return [], [], []
     elif features_map_hash in feature_map_hash:
-        return [999], [999], [999]
+        return [9999], [9999], [9999]
     else:
         feature_map_hash[hash(model_features.data.tobytes())] = None
 
+    # Creating masked input for training the model.
     masked_x_train = x_train[:, model_features]
     masked_x_test = x_test[:, model_features]
+
+    # Removing priv features from input
+    x_train[:, priv_features] = 0
+    x_test[:, priv_features] = 0
 
     masked_input = (masked_x_train, masked_x_test)
 
@@ -172,6 +171,7 @@ def train_obfuscator_top_k_features(shap_data_dict, topk_size, x_train, x_test, 
 
 def train_obfuscation_model(obf_model, model_features, x_train_input, x_test_input, masked_input, util_sv_labels, priv_e_labels,
                             priv_g_labels, optimizer, lambd):
+
     nr_e_classes = priv_e_labels[0][0].shape[0]
     nr_g_classes = priv_g_labels[0][0].shape[0]
     nr_sv_classes = util_sv_labels[0][0].shape[0]
@@ -401,7 +401,7 @@ if __name__ == "__main__":
     priv_classes = []
     top_k_sizes = [-x for x in range(0, 40, 1)]
     current_top_k = 0
-    top_k_sizes = [-10, -20]
+    top_k_sizes = [-5, -10]
 
     batch_size = 32
     epochs = 300

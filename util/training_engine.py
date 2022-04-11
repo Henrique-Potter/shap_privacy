@@ -34,17 +34,11 @@ def train_step(model, feature_map, priv_emo_model, priv_gen_model, util_mdl, x_i
                util_loss_fn, priv_e_loss_fn, priv_g_loss_fn, lambd):
 
     with tf.GradientTape() as tape:
-        # cls_targets = tf.constant([2, 3])
-        # cls_size = cls_targets.shape[0]
-        #
         # batch_sz = x_input.shape[0]
         # feature_sz = x_input.shape[1]
         # nr_priv_classes = y_priv.shape[1]
         model_mask = model(masked_x_input, training=True)
         tape.watch(model_mask)
-        v_copy2 = tf.identity(x_input)
-        # paddings = tf.constant([[0, 0], [0, 40 - model_mask.shape[1]]])
-        # final_mask = tf.pad(model_mask, paddings)
 
         output_list = []
         feature_index = 0
