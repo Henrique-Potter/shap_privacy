@@ -7,7 +7,7 @@ from tensorflow.keras.models import load_model
 from tqdm import tqdm
 
 from data_processing import pre_process_data, to_batchdataset
-from experiment_neural_nets import get_obfuscation_model_swish, get_obfuscation_model_large_swish
+from experiment_neural_nets import get_obfuscation_model_swish
 from shap_experiment import extract_shap_values, parse_shap_values_by_class
 from util.custom_functions import plot_obf_loss_from_list, calc_confusion_matrix, priv_util_plot_acc_data, priv_util_plot_f1_data, \
     collect_perf_metrics, obfuscate_input
@@ -59,19 +59,18 @@ def main():
     priv_e_labels = (y_tr_emo, y_te_emo)
     util_labels = (y_tr_sv, y_te_sv)
 
-    lambd = 0
     # ------------ Util/Priv performance paths ----------------
-    util_sv_perf_path = './data/nn_obfuscator_perf/sv_privacy/util_sv_data_cls{}_l{}_{}fts_e{}_util5.npy'
-    priv_emo_perf_path = './data/nn_obfuscator_perf/sv_privacy/priv_emo_data_cls{}_l{}_{}fts_e{}_util5.npy'
-    priv_gen_perf_path = './data/nn_obfuscator_perf/sv_privacy/priv_gen_data_cls{}_l{}_{}fts_e{}_util5.npy'
+    util_sv_perf_path = './data/nn_obfuscator_perf/sv_privacy/util_sv_data_cls{}_{}fts_e{}_util5.npy'
+    priv_emo_perf_path = './data/nn_obfuscator_perf/sv_privacy/priv_emo_data_cls{}_{}fts_e{}_util5.npy'
+    priv_gen_perf_path = './data/nn_obfuscator_perf/sv_privacy/priv_gen_data_cls{}_{}fts_e{}_util5.npy'
 
     for index, top_k_size in enumerate(top_k_sizes):
         global current_top_k
         current_top_k = top_k_size
 
-        util_perf_path_full = set_file_name(lambd, top_k_size, util_sv_perf_path)
-        priv_emo_perf_path_full = set_file_name(lambd, top_k_size, priv_emo_perf_path)
-        priv_gen_perf_path_full = set_file_name(lambd, top_k_size, priv_gen_perf_path)
+        util_perf_path_full = set_file_name(top_k_size, util_sv_perf_path)
+        priv_emo_perf_path_full = set_file_name(top_k_size, priv_emo_perf_path)
+        priv_gen_perf_path_full = set_file_name(top_k_size, priv_gen_perf_path)
 
         if not Path(util_perf_path_full).exists() or not Path(priv_emo_perf_path_full).exists():
             # ------------ Util/Priv Definitions ----------------
@@ -81,8 +80,7 @@ def main():
                                                                                                     x_test_scaled,
                                                                                                     util_labels,
                                                                                                     priv_e_labels,
-                                                                                                    priv_g_labels,
-                                                                                                    lambd)
+                                                                                                    priv_g_labels)
 
             if len(util_sv_perf_list) == 0:
                 print("All features have been removed, stopping the experiment.")
@@ -100,7 +98,8 @@ def main():
 
 
 def train_obfuscator_top_k_features(shap_data_dict, topk_size, x_train, x_test, util_labels, priv_e_labels,
-                                    priv_g_labels, lambd):
+                                    priv_g_labels):
+
     gen_shap_idxs = shap_data_dict["gen"]
     emo_shap_idxs = shap_data_dict["emo"]
     util_shap_idxs = shap_data_dict["sv"]
@@ -120,8 +119,11 @@ def train_obfuscator_top_k_features(shap_data_dict, topk_size, x_train, x_test, 
     # Selecting top k features.
     features = [x for x in range(40)]
     priv_features = np.union1d(priv1_feature_mask, priv2_feature_mask)
-    priv_util_features = np.union1d(priv_features, util_feature_mask)
-    model_features = np.setdiff1d(features, priv_util_features)
+    # priv_util_features = np.union1d(priv_features, util_feature_mask)
+
+    # model_features = np.setdiff1d(features, priv_util_features)
+
+    model_features = priv_features.astype(np.int32)
 
     model_features.flags.writeable = False
     features_map_hash = hash(model_features.data.tobytes())
@@ -134,21 +136,23 @@ def train_obfuscator_top_k_features(shap_data_dict, topk_size, x_train, x_test, 
     else:
         feature_map_hash[hash(model_features.data.tobytes())] = None
 
-    # Creating masked input for training the model.
-    masked_x_train = x_train[:, model_features]
-    masked_x_test = x_test[:, model_features]
+    if mask_input:
+        # Creating masked input for training the model.
+        masked_x_train = x_train[:, model_features]
+        masked_x_test = x_test[:, model_features]
+        masked_input = (masked_x_train, masked_x_test)
+    else:
+        masked_input = (x_train, x_test)
 
     # Removing priv features from input
-    x_train[:, priv_features] = 0
-    x_test[:, priv_features] = 0
-
-    masked_input = (masked_x_train, masked_x_test)
+    x_train[:, model_features] = 0
+    x_test[:, model_features] = 0
 
     optimizer = tf.keras.optimizers.Adam(learning_rate=0.00005)
 
-    nn_input_sz = masked_x_train.shape
-    model = get_obfuscation_model_swish(nn_input_sz[1])
-    # model = get_obfuscation_model_large_swish(nn_input_sz[1])
+    nn_input_sz = masked_input[0].shape[1]
+    nn_output_sz = model_features.shape[0]
+    model = get_obfuscation_model_swish(nn_input_sz, nn_output_sz)
 
     save_model_meta_data(model_features, topk_size)
 
@@ -161,16 +165,15 @@ def train_obfuscator_top_k_features(shap_data_dict, topk_size, x_train, x_test, 
                                                                                                util_labels,
                                                                                                priv_e_labels,
                                                                                                priv_g_labels,
-                                                                                               optimizer,
-                                                                                               lambd)
+                                                                                               optimizer)
     # else:
     #     model = tf.keras.models.load_model(obf_model_path)
 
     return util_sv_perf_list, priv_e_perf_list, priv_g_perf_list
 
 
-def train_obfuscation_model(obf_model, model_features, x_train_input, x_test_input, masked_input, util_sv_labels, priv_e_labels,
-                            priv_g_labels, optimizer, lambd):
+def train_obfuscation_model(obf_model, model_features, x_train_input, x_test_input, masked_input, util_sv_labels,
+                            priv_e_labels, priv_g_labels, optimizer):
 
     nr_e_classes = priv_e_labels[0][0].shape[0]
     nr_g_classes = priv_g_labels[0][0].shape[0]
@@ -204,7 +207,7 @@ def train_obfuscation_model(obf_model, model_features, x_train_input, x_test_inp
     priv_g_perf_list = [[], []]
     final_loss_perf = [[], [], [], [], [], [], []]
 
-    with tf.device('gpu:0'):
+    with tf.device('cpu:0'):
         for e in tqdm(range(epochs)):
             for (x_tr_batch, util_tr_y_batch), masked_x_tr_batch in zip(util_xy_tr_batch_dt, masked_x_tr_batch_dt):
                 tloss, peloss, pgloss, uloss, gradients, _ = train_step(obf_model,
@@ -219,8 +222,7 @@ def train_obfuscation_model(obf_model, model_features, x_train_input, x_test_inp
                                                                         priv_g_label,
                                                                         util_loss_fn,
                                                                         priv_e_loss_fn,
-                                                                        priv_g_loss_fn,
-                                                                        lambd)
+                                                                        priv_g_loss_fn)
 
                 optimizer.apply_gradients(zip(gradients, obf_model.trainable_variables))
                 total_tr_loss(tloss)
@@ -228,20 +230,7 @@ def train_obfuscation_model(obf_model, model_features, x_train_input, x_test_inp
                 priv_g_loss(pgloss)
                 priv_sv_loss(uloss)
 
-            final_loss_perf[0].append(total_tr_loss.result().numpy())
-            final_loss_perf[1].append(priv_e_loss.result().numpy())
-            final_loss_perf[2].append(priv_g_loss.result().numpy())
-            final_loss_perf[3].append(priv_sv_loss.result().numpy())
-
-            tf.print(total_tr_loss.result())
-            tf.print(priv_e_loss.result())
-            tf.print(priv_g_loss.result())
-            tf.print(priv_sv_loss.result())
-
-            total_tr_loss.reset_states()
-            priv_e_loss.reset_states()
-            priv_g_loss.reset_states()
-            priv_sv_loss.reset_states()
+            get_loss_per_epoch_info(final_loss_perf, priv_e_loss, priv_g_loss, priv_sv_loss, total_tr_loss)
 
             if (e + 1) % sample_results_rate == 0:
 
@@ -273,6 +262,24 @@ def train_obfuscation_model(obf_model, model_features, x_train_input, x_test_inp
     tf.compat.v1.reset_default_graph()
 
     return obf_model, util_sv_perf_list, priv_e_perf_list, priv_g_perf_list
+
+
+def get_loss_per_epoch_info(final_loss_perf, priv_e_loss, priv_g_loss, priv_sv_loss, total_tr_loss):
+
+    final_loss_perf[0].append(total_tr_loss.result().numpy())
+    final_loss_perf[1].append(priv_e_loss.result().numpy())
+    final_loss_perf[2].append(priv_g_loss.result().numpy())
+    final_loss_perf[3].append(priv_sv_loss.result().numpy())
+    if print_loss:
+        print("\n")
+        print(f"Total Loss: {total_tr_loss.result().numpy()}")
+        print(f"Emotion Loss: {priv_e_loss.result().numpy()}")
+        print(f"Gender Loss: {priv_g_loss.result().numpy()}")
+        print(f"SV Loss: {priv_sv_loss.result().numpy()}")
+    total_tr_loss.reset_states()
+    priv_e_loss.reset_states()
+    priv_g_loss.reset_states()
+    priv_sv_loss.reset_states()
 
 
 def save_model_meta_data(model_features, topk_size):
@@ -353,8 +360,8 @@ def print_gen_logits(gen_train_y, priv_mdl_logits):
     print(female_logit_avg)
 
 
-def set_file_name(lambd, top_k_size, util_perf_path):
-    util_perf_path_full = util_perf_path.format(str(priv_classes), str(lambd), top_k_size, epochs)
+def set_file_name(top_k_size, util_perf_path):
+    util_perf_path_full = util_perf_path.format(str(priv_classes), top_k_size, epochs)
     return util_perf_path_full
 
 
@@ -401,12 +408,15 @@ if __name__ == "__main__":
     priv_classes = []
     top_k_sizes = [-x for x in range(0, 40, 1)]
     current_top_k = 0
-    top_k_sizes = [-5, -10]
+    top_k_sizes = [5, 10]
+
+    # Reduce input features to match top K restrictions
+    mask_input = False
 
     batch_size = 32
     epochs = 300
     sample_results_rate = 10
-
+    print_loss = False
     # metrics
     plot_epoch_rate = 50
 

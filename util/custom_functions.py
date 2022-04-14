@@ -118,6 +118,36 @@ def replace_outliers_by_quartile(data, m=1.5):
     return data2
 
 
+def awgn(s, gamma, L=1):
+    """
+    AWGN channel
+    Add AWGN noise to input signal. The function adds AWGN noise vector to signal 's' to generate a resulting signal
+    vector 'r' of specified SNR in dB. It also returns the noise vector 'n' that is added to the signal 's' and the
+    power spectral density N0 of noise added
+    Parameters:
+        s : input/transmitted signal vector
+        SNRdB : desired signal to noise ratio (expressed in dB) for the received signal
+        L : oversampling factor (applicable for waveform simulation) default L = 1.
+    Returns:
+        r : received signal vector (r=s+n)
+    """
+    # gamma = 10**(SNRdB/10) #SNR to linear scale
+    # if s.ndim == 1:# if s is single dimensional vector
+    #     P = L*sum(abs(s[0])**2)/len(s) #Actual power in the vector
+    # else:# multi-dimensional signals like MFSK
+    #     P = L*sum(sum(abs(s)**2))/len(s)
+    #     P = L*np.mean(np.sqrt(np.sum(np.abs(s) ** 2, axis=1) / s.shape[1]))# if s is a matrix [MxN]
+
+    # The power of the signal is equal to its statistical variance.
+    P = L * np.var(s)
+
+    N0=P/gamma # Find the noise spectral density
+
+    n = np.sqrt(N0)*np.random.standard_normal(s.shape) # computed noise
+
+    return n
+
+
 def priv_util_plot_f1_data(priv_e_model_data, priv_g_model_data, util_model_data, title, x_label, x_ticks=None):
     lbl1 = "Speaker Verification F1 (Utility)"
     lbl2 = "Emotion F1 (Private)"
@@ -146,6 +176,8 @@ def priv_util_plot_f1_data(priv_e_model_data, priv_g_model_data, util_model_data
     plt.show()
 
     return x_ticks
+
+
 
 
 def collect_perf_metrics(model, obf_input, util_sv_labels, perf_list):
@@ -228,8 +260,8 @@ def priv_util_plot_acc_data(priv_e_model_data, priv_g_model_data, util_model_dat
     return x_ticks
 
 
-def obfuscate_input(model, obfuscator_x_input, clean_x_innput, model_features):
-    input_temp = clean_x_innput.copy()
+def obfuscate_input(model, obfuscator_x_input, clean_x_input, model_features):
+    input_temp = clean_x_input.copy()
 
     # Generating the mask
     obf_masks = model.predict(obfuscator_x_input)

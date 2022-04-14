@@ -28,9 +28,6 @@ def main():
     x_train_cnn_scaled = sc.fit_transform(x_train_mfcc)
     x_test_cnn_scaled = sc.transform(x_test_mfcc)
 
-    # x_train_cnn_scaled = np.reshape(x_train_cnn_scaled, x_traincnn.shape)
-    # x_test_cnn_scaled = np.reshape(x_test_cnn_scaled, x_testcnn.shape)
-
     print("Building Neural Net")
     model = build_emo_model_swish(x_train_cnn_scaled)
     model_path = emo_model_path

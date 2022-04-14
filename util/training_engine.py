@@ -31,7 +31,7 @@ def train_model(model, model_path, batch, epoch, x_traincnn, y_train, x_testcnn,
 
 @tf.function
 def train_step(model, feature_map, priv_emo_model, priv_gen_model, util_mdl, x_input, masked_x_input, y_util, y_e_priv, y_g_priv,
-               util_loss_fn, priv_e_loss_fn, priv_g_loss_fn, lambd):
+               util_loss_fn, priv_e_loss_fn, priv_g_loss_fn):
 
     with tf.GradientTape() as tape:
         # batch_sz = x_input.shape[0]
@@ -61,7 +61,7 @@ def train_step(model, feature_map, priv_emo_model, priv_gen_model, util_mdl, x_i
         # priv_mdl_true_loss = priv_mdl_loss_fn(tf.cast(y_priv_mdl, tf.float64), tf.cast(priv_mdl_logits, tf.float64))
         # y_priv should already be masked by class
         # peloss = (1-lambd)/6 * 5 * priv_e_loss_fn(y_e_priv, priv_mdl_logits)
-        peloss = 2 * priv_e_loss_fn(y_e_priv, epriv_mdl_logits)
+        peloss = 4 * priv_e_loss_fn(y_e_priv, epriv_mdl_logits)
 
         # Calculating gen loss
         gpriv_mdl_logits = priv_gen_model(obfuscated_input, training=False)

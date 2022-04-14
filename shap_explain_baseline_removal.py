@@ -35,16 +35,6 @@ def main():
     emo_gt_shap_list, emo_corr_shap_list = parse_shap_values_by_class(emo_shap_values, y_te_emo)
     sv_gt_shap_list, sv_corr_shap_list = parse_shap_values_by_class(sv_shap_values, y_te_sv)
 
-    # model_name = 'gender_model_cr'
-    # export_shap_to_csv(gen_corr_shap_list, model_name)
-    # model_name = 'emo_model_cr'
-    # export_shap_to_csv(emo_corr_shap_list, model_name)
-
-    # mean_std_analysis(gen_corr_shap_list)
-    # mean_std_analysis(emo_corr_shap_list)
-    # pclass_shap_list0 = gen_gt_shap_list[0]
-    # pclass_shap_list1 = gen_gt_shap_list[1]
-
     shap_imp_order_emotion = summarize_shap_scores(emo_gt_shap_list)
     shap_imp_order_gen = summarize_shap_scores(gen_gt_shap_list)
     shap_imp_order_sv = summarize_shap_scores(sv_gt_shap_list)
@@ -57,15 +47,15 @@ def main():
     util_labels = (y_tr_sv, y_te_sv)
 
     util_sv_perf_list = []
-    priv_e_perf_list =[]
-    priv_g_perf_list =[]
+    priv_e_perf_list = []
+    priv_g_perf_list = []
     model_features_list = []
     top_k_list = []
 
     # ------------ Util/Priv performance paths ----------------
-    util_sv_perf_path = f'./data/nn_obfuscator_perf/sv_privacy/util_sv_tec_{tech}.csv'
-    priv_emo_perf_path = f'./data/nn_obfuscator_perf/sv_privacy/priv_emo_tec_{tech}.csv'
-    priv_gen_perf_path = f'./data/nn_obfuscator_perf/sv_privacy/priv_gen_tec_{tech}.csv'
+    util_sv_perf_path = f'./data/nn_obfuscator_perf/sv_privacy/util_sv_tec_{tech}.xlsx'
+    priv_emo_perf_path = f'./data/nn_obfuscator_perf/sv_privacy/priv_emo_tec_{tech}.xlsx'
+    priv_gen_perf_path = f'./data/nn_obfuscator_perf/sv_privacy/priv_gen_tec_{tech}.xlsx'
 
     for index, top_k_size in tqdm(enumerate(top_k_sizes)):
         global current_top_k
@@ -100,11 +90,12 @@ def main():
     import pandas as pd
     data_df = pd.concat([pd.Series(util_sv_perf_list), pd.Series(priv_e_perf_list), pd.Series(priv_g_perf_list), pd.Series(model_features_list), pd.Series(top_k_list)], axis=1)
     data_df.columns = ['SV F1', 'Emotion F1', 'Gender F1', 'Features', 'Top K']
-    data_df.to_csv(util_sv_perf_path)
+    data_df.to_excel(util_sv_perf_path)
 
 
 def train_obfuscator_top_k_features(shap_data_dict, topk_size, x_train, x_test, util_labels, priv_e_labels,
                                     priv_g_labels):
+    x_test = x_test.copy()
 
     gen_shap_idxs = shap_data_dict["gen"]
     emo_shap_idxs = shap_data_dict["emo"]
@@ -113,7 +104,7 @@ def train_obfuscator_top_k_features(shap_data_dict, topk_size, x_train, x_test, 
     if topk_size > 0:
         priv1_feature_mask = gen_shap_idxs[-topk_size:]
         priv2_feature_mask = emo_shap_idxs[-topk_size:]
-        util_feature_mask = util_shap_idxs[-5:]
+        util_feature_mask = util_shap_idxs[-topk_size:]
     elif topk_size < 0:
         priv1_feature_mask = gen_shap_idxs[:-topk_size]
         priv2_feature_mask = emo_shap_idxs[:-topk_size]
@@ -121,13 +112,14 @@ def train_obfuscator_top_k_features(shap_data_dict, topk_size, x_train, x_test, 
     else:
         priv1_feature_mask = []
         priv2_feature_mask = []
+        util_feature_mask = []
 
     # Selecting top k features.
     features = [x for x in range(40)]
     priv_features = np.union1d(priv1_feature_mask, priv2_feature_mask)
     # priv_util_features = np.union1d(priv_features, util_feature_mask)
-    model_features = np.setdiff1d(priv_features, util_feature_mask)
-    # model_features = priv_features
+    # model_features = np.setdiff1d(priv_features, util_feature_mask)
+    model_features = priv_features
 
     model_features.flags.writeable = False
     features_map_hash = hash(model_features.data.tobytes())
@@ -141,14 +133,10 @@ def train_obfuscator_top_k_features(shap_data_dict, topk_size, x_train, x_test, 
         feature_map_hash[hash(model_features.data.tobytes())] = None
 
     # Removing priv features from input
-    x_train[:, priv_features] = 0
-    x_test[:, priv_features] = 0
-
-    # save_model_meta_data(model_features, topk_size)
+    x_test[:, model_features] = 0
 
     # if not Path(obf_model_path).exists():
-    util_sv_perf_list, priv_e_perf_list, priv_g_perf_list = evaluate_technique(x_train,
-                                                                               x_test,
+    util_sv_perf_list, priv_e_perf_list, priv_g_perf_list = evaluate_technique(x_test,
                                                                                util_labels,
                                                                                priv_e_labels,
                                                                                priv_g_labels)
@@ -156,7 +144,7 @@ def train_obfuscator_top_k_features(shap_data_dict, topk_size, x_train, x_test, 
     return util_sv_perf_list, priv_e_perf_list, priv_g_perf_list, priv_features, topk_size
 
 
-def evaluate_technique(x_train, x_test_input, util_sv_labels, priv_e_labels, priv_g_labels):
+def evaluate_technique(x_test_input, util_sv_labels, priv_e_labels, priv_g_labels):
 
     util_sv_perf_list = [[], []]
     priv_e_perf_list = [[], []]
@@ -235,11 +223,6 @@ def create_label_mask(priv_classes, priv_labels):
     return tr_priv_labels
 
 
-def set_file_name(lambd, top_k_size, util_perf_path):
-    util_perf_path_full = util_perf_path.format(str(priv_classes), str(lambd), top_k_size, epochs)
-    return util_perf_path_full
-
-
 if __name__ == "__main__":
     emo_model_path = "emo_checkpoint/emodel_scalarized_ravdess.h5"
     id_model_path = "sv_model_checkpoint/sver_model_scalarized_data.h5"
@@ -249,7 +232,8 @@ if __name__ == "__main__":
     obf_model_keras_path = 'obf_checkpoint/model_obf_k_{}_util5'
     obf_model_meta_data = 'obf_checkpoint/model_obf_meta_k_removal_{}_util5'
 
-    tech = "removal_top5_util"
+    tech = "priv_removal"
+    # tech = "priv_removal_util_protected"
 
     # datasets
     audio_files_path = "./NNDatasets/audio"
@@ -264,20 +248,10 @@ if __name__ == "__main__":
     priv_gen_model = load_model(gender_model_path)
 
     # ------------- Hyperparameters -------------
-    lambds = [.95]
-    # lambds = [x/10 for x in range(1, 10)]
-
     priv_classes = []
     top_k_sizes = [x for x in range(1, 40, 1)]
     current_top_k = 0
     # top_k_sizes = [5, 10]
-
-    batch_size = 32
-    epochs = 300
-    sample_results_rate = 10
-
-    # metrics
-    plot_epoch_rate = 50
 
     feature_map_hash = {}
 

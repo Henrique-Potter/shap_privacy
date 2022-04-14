@@ -1,5 +1,5 @@
 import tensorflow as tf
-# from keras import Sequential
+
 from keras.layers import Conv2D, MaxPool2D, AlphaDropout
 from tensorflow.keras import optimizers
 from tensorflow.keras.layers import Conv1D, MaxPooling1D
@@ -436,7 +436,7 @@ def get_obfuscation_model_tanh2(input_shape):
     return model
 
 
-def get_obfuscation_model_swish(input_shape):
+def get_obfuscation_model_swish(input_shape, output_shape):
 
     model = Sequential()
     model.add(Dense(128, input_shape=(input_shape,), ))
@@ -448,7 +448,7 @@ def get_obfuscation_model_swish(input_shape):
     model.add(Dense(64, ))
     model.add(Activation('swish'))
     model.add(Dropout(0.1))
-    model.add(Dense(input_shape, ))
+    model.add(Dense(output_shape, ))
     model.add(Activation('linear'))
 
     print(model.summary())
